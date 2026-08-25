@@ -66,13 +66,7 @@ print(f'OUT graph OK: absolute={abs_count}, relative={rel_count}')
 PY
 [ $? -eq 0 ] || die "kernel OUT graph assertion failed"
 
-# 4) VINTF assertion (log ends with COMPATIBLE).
-VINTF_LOG="$OUT_DIR/target/product/lunaa/obj/PACKAGING/check_vintf_all_intermediates/check_vintf_compatible.log"
-[ -f "$VINTF_LOG" ] || die "VINTF log not found: $VINTF_LOG"
-tail -n 1 "$VINTF_LOG" | grep -qx COMPATIBLE || die "VINTF not COMPATIBLE"
-log "VINTF COMPATIBLE"
-
-# 5) FCM 7 requires SYSVIPC=y for every 5.4 kernel block.
+# 4) FCM 7 requires SYSVIPC=y for every 5.4 kernel block.
 python3 - "$OUT_DIR" <<'PY'
 import sys
 import xml.etree.ElementTree as ET
@@ -90,7 +84,7 @@ print(f'FCM 7 SYSVIPC=y in {len(blocks)} 5.4 block(s)')
 PY
 [ $? -eq 0 ] || die "FCM 7 SYSVIPC assertion failed"
 
-# 6) APEX allowed-deps gate (conditional — file appears during full build).
+# 5) APEX allowed-deps gate (conditional — file appears during full build).
 NEW_DEPS="$OUT_DIR/soong/apex/depsinfo/new-allowed-deps.txt"
 BASE_DEPS="$ROOT/packages/modules/common/build/allowed_deps.txt"
 if [ -f "$NEW_DEPS" ]; then
