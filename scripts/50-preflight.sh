@@ -21,9 +21,11 @@ log "sourcing build/envsetup.sh (do NOT enable 'set -u' before this)"
 source build/envsetup.sh
 breakfast lunaa
 
-# 1) Build kernel image + run VINTF compatibility check.
-log "building bootimage + check_vintf_compatible"
-m "-j${BUILD_JOBS}" bootimage check_vintf_compatible || die "bootimage/vintf build failed"
+# 1) Build the boot image. VINTF is intentionally evaluated during the complete
+# packaging build: Android make declares check_vintf_compatible as a generated
+# log-file dependency, not a standalone Ninja target.
+log "building bootimage (VINTF runs during the full bacon build)"
+m "-j${BUILD_JOBS}" bootimage || die "bootimage build failed"
 
 KCONFIG="$OUT_DIR/target/product/lunaa/obj/KERNEL_OBJ/.config"
 
@@ -116,5 +118,5 @@ else
   log "APEX new-allowed-deps.txt not present yet — expected; re-run this gate if bacon stops there"
 fi
 
-log "preflight passed — run 60-build.sh next"
+log "preflight passed — run 60-build.sh next; then use 80-audit.sh to require the generated VINTF log"
 exit 0
