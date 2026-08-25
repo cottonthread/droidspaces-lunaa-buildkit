@@ -55,7 +55,27 @@ log "checking target-files VINTF"
 ledger vintf_check 0 >> "$AUDIT/audit-status.txt"
 log "target-files VINTF OK"
 
-# 9.4 AVB: parse from the FINAL images ZIP, then verify with the expected key.
+# 9.4 FCM 7 policy used by this Droidspaces variant. This requires the complete
+# system image, so it is deliberately checked only after target-files VINTF.
+python3 - "$OUT" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+path = sys.argv[1] + '/target/product/lunaa/system/etc/vintf/compatibility_matrix.7.xml'
+root = ET.parse(path).getroot()
+blocks = []
+for kernel in root.findall('kernel'):
+    if kernel.attrib.get('version', '').startswith('5.4'):
+        vals = [c.findtext('value') for c in kernel.findall('config')
+                if c.findtext('key') == 'CONFIG_SYSVIPC']
+        blocks.append(vals)
+if not blocks or any(vals != ['y'] for vals in blocks):
+    raise SystemExit({'CONFIG_SYSVIPC per 5.4 block': blocks})
+print(f'FCM 7 SYSVIPC=y in {len(blocks)} 5.4 block(s)')
+PY
+[ $? -eq 0 ] || die "FCM 7 SYSVIPC post-build assertion failed"
+ledger fcm_sysvipc_check 0 >> "$AUDIT/audit-status.txt"
+
+# 9.5 AVB: parse from the FINAL images ZIP, then verify with the expected key.
 log "AVB parse + verify (final images ZIP only)"
 AVB="$HOST/avbtool"
 [ -x "$AVB" ] || die "avbtool not executable: $AVB"

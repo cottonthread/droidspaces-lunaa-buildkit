@@ -66,25 +66,7 @@ print(f'OUT graph OK: absolute={abs_count}, relative={rel_count}')
 PY
 [ $? -eq 0 ] || die "kernel OUT graph assertion failed"
 
-# 4) FCM 7 requires SYSVIPC=y for every 5.4 kernel block.
-python3 - "$OUT_DIR" <<'PY'
-import sys
-import xml.etree.ElementTree as ET
-path = (sys.argv[1] + '/target/product/lunaa/system/etc/vintf/compatibility_matrix.7.xml')
-root = ET.parse(path).getroot()
-blocks = []
-for kernel in root.findall('kernel'):
-    if kernel.attrib.get('version', '').startswith('5.4'):
-        vals = [c.findtext('value') for c in kernel.findall('config')
-                if c.findtext('key') == 'CONFIG_SYSVIPC']
-        blocks.append(vals)
-if not blocks or any(vals != ['y'] for vals in blocks):
-    raise SystemExit({'CONFIG_SYSVIPC per 5.4 block': blocks})
-print(f'FCM 7 SYSVIPC=y in {len(blocks)} 5.4 block(s)')
-PY
-[ $? -eq 0 ] || die "FCM 7 SYSVIPC assertion failed"
-
-# 5) APEX allowed-deps gate (conditional — file appears during full build).
+# 4) APEX allowed-deps gate (conditional — file appears during full build).
 NEW_DEPS="$OUT_DIR/soong/apex/depsinfo/new-allowed-deps.txt"
 BASE_DEPS="$ROOT/packages/modules/common/build/allowed_deps.txt"
 if [ -f "$NEW_DEPS" ]; then
@@ -112,5 +94,5 @@ else
   log "APEX new-allowed-deps.txt not present yet — expected; re-run this gate if bacon stops there"
 fi
 
-log "preflight passed — run 60-build.sh next; then use 80-audit.sh to require the generated VINTF log"
+log "preflight passed — run 60-build.sh next; 80-audit.sh performs VINTF and FCM matrix validation after complete packaging"
 exit 0
