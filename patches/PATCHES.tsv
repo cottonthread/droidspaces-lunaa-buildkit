@@ -1,0 +1,9 @@
+# Per-project patch index for the frozen-20260825 buildkit.
+# patch_file<TAB>project_path<TAB>base_revision
+build__soong.patch	build/soong	4035bec90f84b583a1502b9a546c6117a28fdbe2
+hardware__oplus.patch	hardware/oplus	9ed73330d06ad8ef3aa4595f6ee49837928dfda6
+kernel__configs.patch	kernel/configs	091688a5c5186cd124a0d19b06441bb8b04c3073
+kernel__oneplus__sm8350.patch	kernel/oneplus/sm8350	f96127f51a9a5cda38dd1b938d68d0c0593f3844
+vendor__oneplus__sm8350-common.patch	vendor/oneplus/sm8350-common	6297e5b930f2a200199814e87866d515f0775d7b
+vendor__realme__lunaa.patch	vendor/realme/lunaa	091d584924b7174b54dc2ed8f0f3e6fd3a307a06
+vendor__lineage.patch	vendor/lineage	40bf2561c068fb27d8171d30fd6553850859cf15

@@ -1,0 +1,22 @@
+diff --git a/config/BoardConfigKernel.mk b/config/BoardConfigKernel.mk
+index 495ef188..9ae3ff72 100644
+--- a/config/BoardConfigKernel.mk
++++ b/config/BoardConfigKernel.mk
+@@ -267,11 +267,13 @@ KERNEL_MAKE_FLAGS += PAHOLE=$(BUILD_TOP)/prebuilts/kernel-build-tools/linux-x86/
+ # Rust bindgen wants matching Clang and libclang versions
+ KERNEL_MAKE_FLAGS += LIBCLANG_PATH=$(TARGET_KERNEL_CLANG_PATH)/lib
+ 
+-# Set the out dir for the kernel's O= arg
+-# This needs to be an absolute path, so only set this if the standard out dir isn't used
++# Set the out dir for the kernel's O= arg.
++# Kbuild resolves a relative O= against the directory passed to make -C, so
++# prefix every relative Android out dir (including custom out-* directories)
++# with BUILD_TOP. Absolute out dirs already need no prefix.
+ OUT_DIR_PREFIX := $(shell echo $(OUT_DIR) | sed -e 's|/target/.*$$||g')
+ KERNEL_BUILD_OUT_PREFIX :=
+-ifeq ($(OUT_DIR_PREFIX),out)
++ifeq ($(filter /%,$(OUT_DIR_PREFIX)),)
+     KERNEL_BUILD_OUT_PREFIX := $(BUILD_TOP)/
+ endif
+ 
+

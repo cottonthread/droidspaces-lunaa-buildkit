@@ -1,0 +1,177 @@
+diff --git a/Android.bp b/Android.bp
+index e1fc95a..febd5ec 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -5867,31 +5867,6 @@ cc_prebuilt_library_shared {
+     soc_specific: true,
+ }
+ 
+-cc_prebuilt_library_shared {
+-    name: "vendor.oplus.hardware.osense.client-V1-ndk_platform",
+-    owner: "realme",
+-    strip: {
+-        none: true,
+-    },
+-    target: {
+-        android_arm64: {
+-            srcs: [
+-                "proprietary/vendor/lib64/vendor.oplus.hardware.osense.client-V1-ndk_platform.so",
+-            ],
+-            shared_libs: [
+-                "libbinder_ndk",
+-                "libc++",
+-                "libc",
+-                "libm",
+-                "libdl",
+-            ],
+-        },
+-    },
+-    compile_multilib: "64",
+-    prefer: true,
+-    soc_specific: true,
+-}
+-
+ cc_prebuilt_library_shared {
+     name: "vendor.qti.hardware.camera.postproc@1.0-service-impl",
+     owner: "realme",
+@@ -9569,56 +9544,6 @@ cc_prebuilt_library_shared {
+     device_specific: true,
+ }
+ 
+-cc_prebuilt_library_shared {
+-    name: "vendor.oplus.hardware.cammidasservice-V1-ndk_platform",
+-    owner: "realme",
+-    strip: {
+-        none: true,
+-    },
+-    target: {
+-        android_arm64: {
+-            srcs: [
+-                "proprietary/odm/lib64/vendor.oplus.hardware.cammidasservice-V1-ndk_platform.so",
+-            ],
+-            shared_libs: [
+-                "libbinder_ndk",
+-                "libc++",
+-                "libc",
+-                "libm",
+-                "libdl",
+-            ],
+-        },
+-    },
+-    compile_multilib: "64",
+-    prefer: true,
+-    device_specific: true,
+-}
+-
+-cc_prebuilt_library_shared {
+-    name: "vendor.oplus.hardware.commondcs-V1-ndk_platform",
+-    owner: "realme",
+-    strip: {
+-        none: true,
+-    },
+-    target: {
+-        android_arm64: {
+-            srcs: [
+-                "proprietary/odm/lib64/vendor.oplus.hardware.commondcs-V1-ndk_platform.so",
+-            ],
+-            shared_libs: [
+-                "libbinder_ndk",
+-                "libc++",
+-                "libc",
+-                "libm",
+-                "libdl",
+-            ],
+-        },
+-    },
+-    compile_multilib: "64",
+-    prefer: true,
+-    device_specific: true,
+-}
+-
+ cc_prebuilt_library_shared {
+     name: "vendor.oplus.hardware.oplusSensor-V1-ndk_platform",
+     owner: "realme",
+@@ -9700,56 +9625,6 @@ cc_prebuilt_library_shared {
+     device_specific: true,
+ }
+ 
+-cc_prebuilt_library_shared {
+-    name: "vendor.oplus.hardware.performance-V1-ndk_platform",
+-    owner: "realme",
+-    strip: {
+-        none: true,
+-    },
+-    target: {
+-        android_arm64: {
+-            srcs: [
+-                "proprietary/odm/lib64/vendor.oplus.hardware.performance-V1-ndk_platform.so",
+-            ],
+-            shared_libs: [
+-                "libbinder_ndk",
+-                "libc++",
+-                "libc",
+-                "libm",
+-                "libdl",
+-            ],
+-        },
+-    },
+-    compile_multilib: "64",
+-    prefer: true,
+-    device_specific: true,
+-}
+-
+-cc_prebuilt_library_shared {
+-    name: "vendor.oplus.hardware.sendextcamcmd-V1-ndk_platform",
+-    owner: "realme",
+-    strip: {
+-        none: true,
+-    },
+-    target: {
+-        android_arm64: {
+-            srcs: [
+-                "proprietary/odm/lib64/vendor.oplus.hardware.sendextcamcmd-V1-ndk_platform.so",
+-            ],
+-            shared_libs: [
+-                "libbinder_ndk",
+-                "libc++",
+-                "libc",
+-                "libm",
+-                "libdl",
+-            ],
+-        },
+-    },
+-    compile_multilib: "64",
+-    prefer: true,
+-    device_specific: true,
+-}
+-
+ cc_prebuilt_library_shared {
+     name: "vendor.oplus.hardware.sendextcamcmd-V1-service-impl",
+     owner: "realme",
+diff --git a/lunaa-vendor.mk b/lunaa-vendor.mk
+index 503647e..160229b 100644
+--- a/lunaa-vendor.mk
++++ b/lunaa-vendor.mk
+@@ -740,7 +740,6 @@ PRODUCT_PACKAGES += \
+     libtfestriping \
+     libthreadutils \
+     vendor.oplus.hardware.cammidasservice@1.0 \
+-    vendor.oplus.hardware.osense.client-V1-ndk_platform \
+     vendor.qti.hardware.camera.postproc@1.0-service-impl \
+     liblvimfs \
+     liblvimfs_wrapper \
+@@ -876,13 +875,9 @@ PRODUCT_PACKAGES += \
+     libtriplecam_optical_zoom_control \
+     libtriplecam_video_optical_zoom \
+     libwatermark_photo \
+-    vendor.oplus.hardware.cammidasservice-V1-ndk_platform \
+-    vendor.oplus.hardware.commondcs-V1-ndk_platform \
+     vendor.oplus.hardware.oplusSensor-V1-ndk_platform \
+     vendor.oplus.hardware.orms@1.0 \
+     vendor.oplus.hardware.osense.client@1.0 \
+-    vendor.oplus.hardware.performance-V1-ndk_platform \
+-    vendor.oplus.hardware.sendextcamcmd-V1-ndk_platform \
+     vendor.oplus.hardware.sendextcamcmd-V1-service-impl \
+     odm_lib_rfsa_adsp_aiboost_libQnnHtpAltPrepSkel_so \
+     odm_lib_rfsa_adsp_aiboost_libQnnHtpSkel_so \
+

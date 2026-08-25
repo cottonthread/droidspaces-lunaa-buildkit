@@ -1,0 +1,1319 @@
+diff --git a/Documentation/admin-guide/kernel-parameters.txt b/Documentation/admin-guide/kernel-parameters.txt
+index 25443c227e27..c33eb805ec85 100644
+--- a/Documentation/admin-guide/kernel-parameters.txt
++++ b/Documentation/admin-guide/kernel-parameters.txt
+@@ -3187,6 +3187,21 @@
+ 			in certain environments such as networked servers or
+ 			real-time systems.
+ 
++	no_hash_pointers
++			Force pointers printed to the console or buffers to be
++			unhashed.  By default, when a pointer is printed via %p
++			format string, that pointer is "hashed", i.e. obscured
++			by hashing the pointer value.  This is a security feature
++			that hides actual kernel addresses from unprivileged
++			users, but it also makes debugging the kernel more
++			difficult since unequal pointers can no longer be
++			compared.  However, if this command-line option is
++			specified, then all normal pointers will have their true
++			value printed.  Pointers printed via %pK may still be
++			hashed.  This option should only be specified when
++			debugging the kernel.  Please do not use on production
++			kernels.
++
+ 	nohibernate	[HIBERNATION] Disable hibernation and resume.
+ 
+ 	nohz=		[KNL] Boottime enable/disable dynamic ticks
+diff --git a/Documentation/dev-tools/index.rst b/Documentation/dev-tools/index.rst
+index b0522a4dd107..cdabec1e168c 100644
+--- a/Documentation/dev-tools/index.rst
++++ b/Documentation/dev-tools/index.rst
+@@ -21,6 +21,7 @@ whole; patches welcome!
+    kasan
+    ubsan
+    kmemleak
++   kfence
+    gdb-kernel-debugging
+    kgdb
+    kselftest
+diff --git a/Makefile b/Makefile
+index 4086994818c6..d125f2a8ed00 100644
+--- a/Makefile
++++ b/Makefile
+@@ -655,6 +655,8 @@ ifeq ($(LLVM_IAS),0)
+ CLANG_FLAGS	+= -no-integrated-as
+ GCC_TOOLCHAIN_DIR := $(dir $(shell which $(CROSS_COMPILE)elfedit))
+ CLANG_FLAGS	+= --prefix=$(GCC_TOOLCHAIN_DIR)$(notdir $(CROSS_COMPILE))
++else
++CLANG_FLAGS += -integrated-as
+ endif
+ CLANG_FLAGS	+= -Werror=unknown-warning-option
+ KBUILD_CPPFLAGS	+= $(CLANG_FLAGS)
+diff --git a/arch/arm64/Kconfig b/arch/arm64/Kconfig
+index 68c3f7f248f5..325b5dbe124a 100644
+--- a/arch/arm64/Kconfig
++++ b/arch/arm64/Kconfig
+@@ -129,6 +129,7 @@ config ARM64
+ 	select HAVE_ARCH_JUMP_LABEL_RELATIVE
+ 	select HAVE_ARCH_KASAN if !(ARM64_16K_PAGES && ARM64_VA_BITS_48)
+ 	select HAVE_ARCH_KASAN_SW_TAGS if HAVE_ARCH_KASAN
++	select HAVE_ARCH_KFENCE
+ 	select HAVE_ARCH_KGDB
+ 	select HAVE_ARCH_MMAP_RND_BITS
+ 	select HAVE_ARCH_MMAP_RND_COMPAT_BITS if COMPAT
+diff --git a/arch/arm64/configs/gki_defconfig b/arch/arm64/configs/gki_defconfig
+index 59ddabbd31fc..94b53ec68b9c 100644
+--- a/arch/arm64/configs/gki_defconfig
++++ b/arch/arm64/configs/gki_defconfig
+@@ -589,6 +589,8 @@ CONFIG_DEBUG_INFO_DWARF4=y
+ CONFIG_MAGIC_SYSRQ=y
+ CONFIG_DEBUG_STACK_USAGE=y
+ CONFIG_DEBUG_MEMORY_INIT=y
++CONFIG_KFENCE=y
++CONFIG_KFENCE_SAMPLE_INTERVAL=0
+ CONFIG_SOFTLOCKUP_DETECTOR=y
+ # CONFIG_DETECT_HUNG_TASK is not set
+ CONFIG_PANIC_ON_OOPS=y
+diff --git a/arch/arm64/configs/vendor/lahaina-qgki_defconfig b/arch/arm64/configs/vendor/lahaina-qgki_defconfig
+index f2f5399e6505..c0cdbcba62fe 100644
+--- a/arch/arm64/configs/vendor/lahaina-qgki_defconfig
++++ b/arch/arm64/configs/vendor/lahaina-qgki_defconfig
+@@ -31,7 +31,7 @@ CONFIG_CPUSETS=y
+ CONFIG_CGROUP_CPUACCT=y
+ CONFIG_CGROUP_BPF=y
+ CONFIG_NAMESPACES=y
+-# CONFIG_PID_NS is not set
++CONFIG_PID_NS=y
+ CONFIG_RELAY=y
+ CONFIG_BLK_DEV_INITRD=y
+ # CONFIG_RD_BZIP2 is not set
+@@ -241,6 +241,7 @@ CONFIG_L2TP=y
+ CONFIG_BRIDGE=y
+ CONFIG_NET_SCHED=y
+ CONFIG_NET_SCH_HTB=y
++CONFIG_NET_SCH_TBF=y
+ CONFIG_NET_SCH_PRIO=y
+ CONFIG_NET_SCH_INGRESS=y
+ CONFIG_NET_CLS_FW=y
+@@ -968,6 +969,8 @@ CONFIG_MAGIC_SYSRQ=y
+ CONFIG_PAGE_OWNER=y
+ CONFIG_DEBUG_STACK_USAGE=y
+ CONFIG_DEBUG_MEMORY_INIT=y
++CONFIG_KFENCE=y
++CONFIG_KFENCE_SAMPLE_INTERVAL=0
+ CONFIG_PANIC_ON_OOPS=y
+ CONFIG_PANIC_TIMEOUT=-1
+ CONFIG_SCHEDSTATS=y
+@@ -989,3 +992,17 @@ CONFIG_CORESIGHT_HWEVENT=y
+ CONFIG_CORESIGHT_DUMMY=y
+ CONFIG_CORESIGHT_REMOTE_ETM=y
+ CONFIG_CORESIGHT_TGU=y
++CONFIG_SYSVIPC=y
++CONFIG_POSIX_MQUEUE=y
++CONFIG_IPC_NS=y
++CONFIG_DEVTMPFS=y
++CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y
++CONFIG_USER_NS=y
++CONFIG_NETFILTER_XT_TARGET_LOG=y
++CONFIG_NETFILTER_XT_MATCH_RECENT=y
++CONFIG_IP_SET=y
++CONFIG_IP_SET_HASH_IP=y
++CONFIG_IP_SET_HASH_NET=y
++CONFIG_NETFILTER_XT_SET=y
++CONFIG_TMPFS_POSIX_ACL=y
++CONFIG_TMPFS_XATTR=y
+diff --git a/arch/arm64/mm/fault.c b/arch/arm64/mm/fault.c
+index 8fcd1dbe1fb7..ae412b438122 100644
+--- a/arch/arm64/mm/fault.c
++++ b/arch/arm64/mm/fault.c
+@@ -10,6 +10,7 @@
+ #include <linux/acpi.h>
+ #include <linux/bitfield.h>
+ #include <linux/extable.h>
++#include <linux/kfence.h>
+ #include <linux/signal.h>
+ #include <linux/mm.h>
+ #include <linux/hardirq.h>
+@@ -327,6 +328,9 @@ static void __do_kernel_fault(unsigned long addr, unsigned int esr,
+ 	} else if (addr < PAGE_SIZE) {
+ 		msg = "NULL pointer dereference";
+ 	} else {
++		if (kfence_handle_page_fault(addr, esr & ESR_ELx_WNR, regs))
++			return;
++
+ 		msg = "paging request";
+ 	}
+ 
+diff --git a/arch/arm64/mm/mmu.c b/arch/arm64/mm/mmu.c
+index 9eaaa69fea9a..b6983b5502bc 100644
+--- a/arch/arm64/mm/mmu.c
++++ b/arch/arm64/mm/mmu.c
+@@ -471,7 +471,8 @@ static void __init map_mem(pgd_t *pgdp)
+ 	struct memblock_region *reg;
+ 	int flags = 0;
+ 
+-	if (rodata_full || debug_pagealloc_enabled())
++	if (rodata_full || debug_pagealloc_enabled() ||
++	    IS_ENABLED(CONFIG_KFENCE))
+ 		flags = NO_BLOCK_MAPPINGS | NO_CONT_MAPPINGS;
+ 
+ 	/*
+@@ -1470,7 +1471,12 @@ int arch_add_memory(int nid, u64 start, u64 size,
+ 		return -1;
+ 	}
+ 
+-	if (rodata_full || debug_pagealloc_enabled())
++	/*
++	 * KFENCE requires linear map to be mapped at page granularity, so that
++	 * it is possible to protect/unprotect single pages in the KFENCE pool.
++	 */
++	if (rodata_full || debug_pagealloc_enabled() ||
++	    IS_ENABLED(CONFIG_KFENCE))
+ 		flags = NO_BLOCK_MAPPINGS | NO_CONT_MAPPINGS;
+ 
+ 	__create_pgd_mapping(swapper_pg_dir, start, __phys_to_virt(start),
+diff --git a/arch/x86/Kconfig b/arch/x86/Kconfig
+index 6e1e5f49664e..8a42463ffee5 100644
+--- a/arch/x86/Kconfig
++++ b/arch/x86/Kconfig
+@@ -139,6 +139,7 @@ config X86
+ 	select HAVE_ARCH_JUMP_LABEL
+ 	select HAVE_ARCH_JUMP_LABEL_RELATIVE
+ 	select HAVE_ARCH_KASAN			if X86_64
++	select HAVE_ARCH_KFENCE
+ 	select HAVE_ARCH_KGDB
+ 	select HAVE_ARCH_MMAP_RND_BITS		if MMU
+ 	select HAVE_ARCH_MMAP_RND_COMPAT_BITS	if MMU && COMPAT
+diff --git a/arch/x86/configs/gki_defconfig b/arch/x86/configs/gki_defconfig
+index 5e751e6cb304..985dc5d5a964 100644
+--- a/arch/x86/configs/gki_defconfig
++++ b/arch/x86/configs/gki_defconfig
+@@ -520,6 +520,8 @@ CONFIG_DEBUG_INFO_DWARF4=y
+ CONFIG_MAGIC_SYSRQ=y
+ CONFIG_DEBUG_STACK_USAGE=y
+ CONFIG_DEBUG_MEMORY_INIT=y
++CONFIG_KFENCE=y
++CONFIG_KFENCE_SAMPLE_INTERVAL=0
+ CONFIG_SOFTLOCKUP_DETECTOR=y
+ # CONFIG_DETECT_HUNG_TASK is not set
+ CONFIG_PANIC_ON_OOPS=y
+diff --git a/arch/x86/mm/fault.c b/arch/x86/mm/fault.c
+index 2fa5e0e5f8e5..e6dc014ece01 100644
+--- a/arch/x86/mm/fault.c
++++ b/arch/x86/mm/fault.c
+@@ -9,6 +9,7 @@
+ #include <linux/kdebug.h>		/* oops_begin/end, ...		*/
+ #include <linux/extable.h>		/* search_exception_tables	*/
+ #include <linux/memblock.h>		/* max_low_pfn			*/
++#include <linux/kfence.h>		/* kfence_handle_page_fault	*/
+ #include <linux/kprobes.h>		/* NOKPROBE_SYMBOL, ...		*/
+ #include <linux/mmiotrace.h>		/* kmmio_handler, ...		*/
+ #include <linux/perf_event.h>		/* perf_sw_event		*/
+@@ -801,6 +802,11 @@ no_context(struct pt_regs *regs, unsigned long error_code,
+ 	if (IS_ENABLED(CONFIG_EFI))
+ 		efi_recover_from_page_fault(address);
+ 
++	/* Only not-present faults should be handled by KFENCE. */
++	if (!(error_code & X86_PF_PROT) &&
++	    kfence_handle_page_fault(address, error_code & X86_PF_WRITE, regs))
++		return;
++
+ oops:
+ 	/*
+ 	 * Oops. The kernel tried to access some bad page. We'll have to
+diff --git a/drivers/char/random.c b/drivers/char/random.c
+index e624bbc09fb1..2cf9fd115565 100644
+--- a/drivers/char/random.c
++++ b/drivers/char/random.c
+@@ -799,16 +799,11 @@ early_param("random.trust_cpu", parse_trust_cpu);
+ early_param("random.trust_bootloader", parse_trust_bootloader);
+ 
+ /*
+- * The first collection of entropy occurs at system boot while interrupts
+- * are still turned off. Here we push in latent entropy, RDSEED, a timestamp,
+- * utsname(), and the command line. Depending on the above configuration knob,
+- * RDSEED may be considered sufficient for initialization. Note that much
+- * earlier setup may already have pushed entropy into the input pool by the
+- * time we get here.
++ * This is called extremely early, before time keeping functionality is
++ * available, but arch randomness is. Interrupts are not yet enabled.
+  */
+-int __init random_init(const char *command_line)
++void __init random_init_early(const char *command_line)
+ {
+-	ktime_t now = ktime_get_real();
+ 	unsigned int i, arch_bits;
+ 	unsigned long entropy;
+ 
+@@ -821,22 +816,41 @@ int __init random_init(const char *command_line)
+ 	     i < BLAKE2S_BLOCK_SIZE; i += sizeof(entropy)) {
+ 		if (!arch_get_random_seed_long_early(&entropy) &&
+ 		    !arch_get_random_long_early(&entropy)) {
+-			entropy = random_get_entropy();
+ 			arch_bits -= sizeof(entropy) * 8;
++			continue;
+ 		}
+ 		_mix_pool_bytes(&entropy, sizeof(entropy));
+ 	}
+-	_mix_pool_bytes(&now, sizeof(now));
+-	_mix_pool_bytes(utsname(), sizeof(*(utsname())));
++
+ 	_mix_pool_bytes(command_line, strlen(command_line));
+-	add_latent_entropy();
+ 
++	/* Reseed if already seeded by earlier phases. */
+ 	if (crng_ready())
+ 		crng_reseed();
+ 	else if (trust_cpu)
+ 		_credit_init_bits(arch_bits);
++}
+ 
+-	return 0;
++/*
++ * This is called a little bit after the prior function, and now there is
++ * access to timestamps counters. Interrupts are not yet enabled.
++ */
++void __init random_init(void)
++{
++	unsigned long entropy = random_get_entropy();
++	ktime_t now = ktime_get_real();
++
++	_mix_pool_bytes(utsname(), sizeof(*(utsname())));
++	_mix_pool_bytes(&now, sizeof(now));
++	_mix_pool_bytes(&entropy, sizeof(entropy));
++	add_latent_entropy();
++
++	/* Reseed if already seeded by earlier phases. */
++	if (crng_ready())
++		crng_reseed();
++
++	WARN(!entropy, "Missing cycle counter and fallback timer; RNG "
++		       "entropy collection will consequently suffer.");
+ }
+ 
+ /*
+diff --git a/drivers/power/oplus/gauge_ic/oplus_optiga/ECC/Optiga_Ecc.c b/drivers/power/oplus/gauge_ic/oplus_optiga/ECC/Optiga_Ecc.c
+index cda751d83d83..1174de27694a 100755
+--- a/drivers/power/oplus/gauge_ic/oplus_optiga/ECC/Optiga_Ecc.c
++++ b/drivers/power/oplus/gauge_ic/oplus_optiga/ECC/Optiga_Ecc.c
+@@ -354,7 +354,7 @@ BOOL Ecc_VerifyODC( uint32_t *gf2n_ODC, uint32_t *gf2n_PublicKey, uint8_t *gf2n_
+ 
+ 	memcpy((uint8_t*)ubHashIn, (uint8_t*)gf2n_PublicKey, 18);
+ 	memcpy(((uint8_t*)ubHashIn)+18, (uint8_t*)gf2n_Uid, 10);
+-	sha256((uint8_t*)ubHashOut, (uint8_t*)ubHashIn, 28);
++	optiga_sha256((uint8_t*)ubHashOut, (uint8_t*)ubHashIn, 28);
+ 
+ 	return ECDSA_verify( sigSignature, (uint8_t*)ubHashOut, ODC_163_PubKeyXY, &ODC_163_Curve);
+ }
+diff --git a/drivers/power/oplus/gauge_ic/oplus_optiga/ECC/Optiga_Math.c b/drivers/power/oplus/gauge_ic/oplus_optiga/ECC/Optiga_Math.c
+index 54c0d2841293..2402e2c95b04 100755
+--- a/drivers/power/oplus/gauge_ic/oplus_optiga/ECC/Optiga_Math.c
++++ b/drivers/power/oplus/gauge_ic/oplus_optiga/ECC/Optiga_Math.c
+@@ -1511,7 +1511,7 @@ void sha256_init(sha256_context_t *context)
+  *                [in] input_data pointer to data to hash
+  *                [in] input_length byte length of hash data
+  ********************************************************************/
+-void sha256(uint8_t *hash_value, const uint8_t *input_data, const uint32_t input_length)
++void optiga_sha256(uint8_t *hash_value, const uint8_t *input_data, const uint32_t input_length)
+ {
+ 	sha256_context_t ctx;
+ 
+diff --git a/drivers/power/oplus/gauge_ic/oplus_optiga/ECC/Optiga_Math.h b/drivers/power/oplus/gauge_ic/oplus_optiga/ECC/Optiga_Math.h
+index 9131c1e1fbd1..1565ab9d8eea 100755
+--- a/drivers/power/oplus/gauge_ic/oplus_optiga/ECC/Optiga_Math.h
++++ b/drivers/power/oplus/gauge_ic/oplus_optiga/ECC/Optiga_Math.h
+@@ -171,7 +171,7 @@ void sha256_compress(sha256_context_t *context);
+ //void sha256_final(uint8_t *hash_value, sha256_context_t *context);
+ //void sha256_update(const uint8_t *input_data, const uint32_t input_length, sha256_context_t *context);
+ void sha256_init(sha256_context_t *context);
+-void sha256(uint8_t *hash_value, const uint8_t *input_data, const uint32_t input_length);
++void optiga_sha256(uint8_t *hash_value, const uint8_t *input_data, const uint32_t input_length);
+ 
+ 
+ #endif				/* _BIF_AUTHENTICATION_H_ */
+diff --git a/include/linux/random.h b/include/linux/random.h
+index 8ed2e245d51e..7e742ef51a83 100644
+--- a/include/linux/random.h
++++ b/include/linux/random.h
+@@ -64,7 +64,8 @@ static inline unsigned long get_random_canary(void)
+ 	return get_random_long() & CANARY_MASK;
+ }
+ 
+-int __init random_init(const char *command_line);
++void __init random_init_early(const char *command_line);
++void __init random_init(void);
+ bool rng_is_initialized(void);
+ int wait_for_random_bytes(void);
+ int register_random_ready_notifier(struct notifier_block *nb);
+diff --git a/include/linux/sched.h b/include/linux/sched.h
+index eb066485d67b..8b127ce8cfca 100644
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
+@@ -1088,8 +1088,8 @@ struct task_struct {
+ 	struct nameidata		*nameidata;
+ 
+ #ifdef CONFIG_SYSVIPC
+-	struct sysv_sem			sysvsem;
+-	struct sysv_shm			sysvshm;
++	// struct sysv_sem			sysvsem;
++	// struct sysv_shm			sysvshm;
+ #endif
+ #ifdef CONFIG_DETECT_HUNG_TASK
+ 	/* hung task detection */
+@@ -1479,9 +1479,15 @@ struct task_struct {
+ 	ANDROID_KABI_RESERVE(3);
+ 	ANDROID_KABI_RESERVE(4);
+ 	ANDROID_KABI_RESERVE(5);
++
++#ifdef CONFIG_SYSVIPC
++	ANDROID_KABI_USE(6, struct sysv_sem sysvsem);
++	_ANDROID_KABI_REPLACE(ANDROID_KABI_RESERVE(7); ANDROID_KABI_RESERVE(8), struct sysv_shm sysvshm);
++#else
+ 	ANDROID_KABI_RESERVE(6);
+ 	ANDROID_KABI_RESERVE(7);
+ 	ANDROID_KABI_RESERVE(8);
++#endif
+ 
+ 	/*
+ 	 * New fields for task_struct should be added above here, so that
+diff --git a/include/linux/sched/user.h b/include/linux/sched/user.h
+index 573b448e07ac..39145166545b 100644
+--- a/include/linux/sched/user.h
++++ b/include/linux/sched/user.h
+@@ -23,7 +23,7 @@ struct user_struct {
+ #endif
+ #ifdef CONFIG_POSIX_MQUEUE
+ 	/* protected by mq_lock	*/
+-	unsigned long mq_bytes;	/* How many bytes can be allocated to mqueue? */
++	// unsigned long mq_bytes;	/* How many bytes can be allocated to mqueue? */
+ #endif
+ 	unsigned long locked_shm; /* How many pages of mlocked shm ? */
+ 	unsigned long unix_inflight;	/* How many files in flight in unix sockets */
+@@ -41,7 +41,11 @@ struct user_struct {
+ 	/* Miscellaneous per-user rate limit */
+ 	struct ratelimit_state ratelimit;
+ 
++#ifdef CONFIG_POSIX_MQUEUE
++	ANDROID_KABI_USE(1, unsigned long mq_bytes);
++#else
+ 	ANDROID_KABI_RESERVE(1);
++#endif
+ 	ANDROID_KABI_RESERVE(2);
+ };
+ 
+diff --git a/include/linux/skbuff.h b/include/linux/skbuff.h
+index 120a2162b844..add201a31f2c 100644
+--- a/include/linux/skbuff.h
++++ b/include/linux/skbuff.h
+@@ -1626,6 +1626,22 @@ static inline int skb_unclone(struct sk_buff *skb, gfp_t pri)
+ 	return 0;
+ }
+ 
++/* This variant of skb_unclone() makes sure skb->truesize is not changed */
++static inline int skb_unclone_keeptruesize(struct sk_buff *skb, gfp_t pri)
++{
++	might_sleep_if(gfpflags_allow_blocking(pri));
++
++	if (skb_cloned(skb)) {
++		unsigned int save = skb->truesize;
++		int res;
++
++		res = pskb_expand_head(skb, 0, 0, pri);
++		skb->truesize = save;
++		return res;
++	}
++	return 0;
++}
++
+ /**
+  *	skb_header_cloned - is the header a clone
+  *	@skb: buffer to check
+diff --git a/init/Kconfig b/init/Kconfig
+index 780d6dc10c6d..9258cb212725 100644
+--- a/init/Kconfig
++++ b/init/Kconfig
+@@ -44,6 +44,18 @@ config CLANG_VERSION
+ 	int
+ 	default $(shell,$(srctree)/scripts/clang-version.sh $(CC))
+ 
++config AS_IS_GNU
++	def_bool $(success,test "$(as-name)" = GNU)
++
++config AS_IS_LLVM
++	def_bool $(success,test "$(as-name)" = LLVM)
++
++config AS_VERSION
++	int
++	# Use clang version if this is the integrated assembler
++	default CLANG_VERSION if AS_IS_LLVM
++	default $(as-version)
++
+ config CC_CAN_LINK
+ 	bool
+ 	default $(success,$(srctree)/scripts/cc-can-link.sh $(CC) $(CLANG_FLAGS) $(USERCFLAGS) $(USERLDFLAGS) $(m64-flag)) if 64BIT
+diff --git a/init/main.c b/init/main.c
+index ea899e9d7743..cb6c59db4188 100644
+--- a/init/main.c
++++ b/init/main.c
+@@ -39,6 +39,7 @@
+ #include <linux/security.h>
+ #include <linux/smp.h>
+ #include <linux/profile.h>
++#include <linux/kfence.h>
+ #include <linux/rcupdate.h>
+ #include <linux/moduleparam.h>
+ #include <linux/kallsyms.h>
+@@ -557,6 +558,7 @@ static void __init mm_init(void)
+ 	 */
+ 	page_ext_init_flatmem();
+ 	init_debug_pagealloc();
++	kfence_alloc_pool();
+ 	report_meminit();
+ 	mem_init();
+ 	/* page_owner must be initialized after buddy is ready */
+@@ -623,6 +625,9 @@ asmlinkage __visible void __init start_kernel(void)
+ 		parse_args("Setting init args", after_dashes, NULL, 0, -1, -1,
+ 			   NULL, set_init_arg);
+ 
++	/* Architectural and non-timekeeping rng init, before allocator init */
++	random_init_early(command_line);
++
+ 	/*
+ 	 * These use large bootmem allocations and must precede
+ 	 * kmem_cache_init()
+@@ -687,14 +692,11 @@ asmlinkage __visible void __init start_kernel(void)
+ 	timekeeping_init();
+ 	time_init();
+ 
+-	/*
+-	 * For best initial stack canary entropy, prepare it after:
+-	 * - setup_arch() for any UEFI RNG entropy and boot cmdline access
+-	 * - timekeeping_init() for ktime entropy used in random_init()
+-	 * - time_init() for making random_get_entropy() work on some platforms
+-	 * - random_init() to initialize the RNG from from early entropy sources
+-	 */
+-	random_init(command_line);
++	/* This must be after timekeeping is initialized */
++	random_init();
++
++	/* These make use of the fully initialized rng */
++	kfence_init();
+ 	boot_init_stack_canary();
+ 
+ 	perf_event_init();
+diff --git a/kernel/trace/Makefile b/kernel/trace/Makefile
+index f9f4512c617d..48d327377cea 100644
+--- a/kernel/trace/Makefile
++++ b/kernel/trace/Makefile
+@@ -72,6 +72,7 @@ obj-$(CONFIG_EVENT_TRACING) += trace_events_trigger.o
+ obj-$(CONFIG_HIST_TRIGGERS) += trace_events_hist.o
+ obj-$(CONFIG_BPF_EVENTS) += bpf_trace.o
+ obj-$(CONFIG_KPROBE_EVENTS) += trace_kprobe.o
++obj-$(CONFIG_TRACEPOINTS) += error_report-traces.o
+ obj-$(CONFIG_TRACEPOINTS) += power-traces.o
+ ifeq ($(CONFIG_PM),y)
+ obj-$(CONFIG_TRACEPOINTS) += rpm-traces.o
+diff --git a/lib/Kconfig.debug b/lib/Kconfig.debug
+index b74832919af2..f47cbf5660b1 100644
+--- a/lib/Kconfig.debug
++++ b/lib/Kconfig.debug
+@@ -782,6 +782,7 @@ config DEBUG_STACKOVERFLOW
+ 	  If in doubt, say "N".
+ 
+ source "lib/Kconfig.kasan"
++source "lib/Kconfig.kfence"
+ 
+ endmenu # "Memory Debugging"
+ 
+diff --git a/lib/test_bitmap.c b/lib/test_bitmap.c
+index 51a98f7ee79e..1ee9d95898b5 100644
+--- a/lib/test_bitmap.c
++++ b/lib/test_bitmap.c
+@@ -16,8 +16,7 @@
+ 
+ #include "../tools/testing/selftests/kselftest_module.h"
+ 
+-static unsigned total_tests __initdata;
+-static unsigned failed_tests __initdata;
++KSTM_MODULE_GLOBALS();
+ 
+ static char pbl_buffer[PAGE_SIZE] __initdata;
+ 
+diff --git a/lib/test_printf.c b/lib/test_printf.c
+index d4b711b53942..0a3153f162c7 100644
+--- a/lib/test_printf.c
++++ b/lib/test_printf.c
+@@ -28,11 +28,13 @@
+ #define PAD_SIZE 16
+ #define FILL_CHAR '$'
+ 
+-static unsigned total_tests __initdata;
+-static unsigned failed_tests __initdata;
++KSTM_MODULE_GLOBALS();
++
+ static char *test_buffer __initdata;
+ static char *alloced_buffer __initdata;
+ 
++extern bool no_hash_pointers;
++
+ static int __printf(4, 0) __init
+ do_test(int bufsize, const char *expect, int elen,
+ 	const char *fmt, va_list ap)
+@@ -299,6 +301,12 @@ plain(void)
+ {
+ 	int err;
+ 
++	if (no_hash_pointers) {
++		pr_warn("skipping plain 'p' tests");
++		skipped_tests += 2;
++		return;
++	}
++
+ 	err = plain_hash();
+ 	if (err) {
+ 		pr_warn("plain 'p' does not appear to be hashed\n");
+diff --git a/lib/vsprintf.c b/lib/vsprintf.c
+index d377456b8c39..f3d84136199b 100644
+--- a/lib/vsprintf.c
++++ b/lib/vsprintf.c
+@@ -2057,6 +2057,32 @@ static char *kobject_string(char *buf, char *end, void *ptr,
+ 	return error_string(buf, end, "(%pO?)", spec);
+ }
+ 
++/* Disable pointer hashing if requested */
++bool no_hash_pointers __ro_after_init;
++EXPORT_SYMBOL_GPL(no_hash_pointers);
++
++static int __init no_hash_pointers_enable(char *str)
++{
++	no_hash_pointers = true;
++
++	pr_warn("**********************************************************\n");
++	pr_warn("**   NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE   **\n");
++	pr_warn("**                                                      **\n");
++	pr_warn("** This system shows unhashed kernel memory addresses   **\n");
++	pr_warn("** via the console, logs, and other interfaces. This    **\n");
++	pr_warn("** might reduce the security of your system.            **\n");
++	pr_warn("**                                                      **\n");
++	pr_warn("** If you see this message and you are not debugging    **\n");
++	pr_warn("** the kernel, report this immediately to your system   **\n");
++	pr_warn("** administrator!                                       **\n");
++	pr_warn("**                                                      **\n");
++	pr_warn("**   NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE   **\n");
++	pr_warn("**********************************************************\n");
++
++	return 0;
++}
++early_param("no_hash_pointers", no_hash_pointers_enable);
++
+ /*
+  * Show a '%p' thing.  A kernel extension is that the '%p' is followed
+  * by an extra set of alphanumeric characters that are extended format
+@@ -2259,8 +2285,14 @@ char *pointer(const char *fmt, char *buf, char *end, void *ptr,
+ 	if (IS_ENABLED(CONFIG_DEBUG_CONSOLE_UNHASHED_POINTERS))
+ 		return pointer_string(buf, end, ptr, spec);
+ 
+-	/* default is to _not_ leak addresses, hash before printing */
+-	return ptr_to_id(buf, end, ptr, spec);
++	/*
++	 * default is to _not_ leak addresses, so hash before printing,
++	 * unless no_hash_pointers is specified on the command line.
++	 */
++	if (unlikely(no_hash_pointers))
++		return pointer_string(buf, end, ptr, spec);
++	else
++		return ptr_to_id(buf, end, ptr, spec);
+ }
+ 
+ /*
+diff --git a/mm/Makefile b/mm/Makefile
+index d433568ee189..7d852be8167b 100644
+--- a/mm/Makefile
++++ b/mm/Makefile
+@@ -71,6 +71,7 @@ obj-$(CONFIG_PAGE_POISONING) += page_poison.o
+ obj-$(CONFIG_SLAB) += slab.o
+ obj-$(CONFIG_SLUB) += slub.o
+ obj-$(CONFIG_KASAN)	+= kasan/
++obj-$(CONFIG_KFENCE) += kfence/
+ obj-$(CONFIG_FAILSLAB) += failslab.o
+ obj-$(CONFIG_MEMORY_HOTPLUG) += memory_hotplug.o
+ obj-$(CONFIG_MEMTEST)		+= memtest.o
+diff --git a/mm/kasan/common.c b/mm/kasan/common.c
+index ac9f624158b9..b71b16da066e 100644
+--- a/mm/kasan/common.c
++++ b/mm/kasan/common.c
+@@ -19,6 +19,7 @@
+ #include <linux/init.h>
+ #include <linux/kasan.h>
+ #include <linux/kernel.h>
++#include <linux/kfence.h>
+ #include <linux/kmemleak.h>
+ #include <linux/linkage.h>
+ #include <linux/memblock.h>
+@@ -140,6 +141,10 @@ void kasan_poison_shadow(const void *address, size_t size, u8 value)
+ 	 */
+ 	address = reset_tag(address);
+ 
++	/* Skip KFENCE memory if called explicitly outside of sl*b. */
++	if (is_kfence_address(address))
++		return;
++
+ 	shadow_start = kasan_mem_to_shadow(address);
+ 	shadow_end = kasan_mem_to_shadow(address + size);
+ 
+@@ -157,6 +162,14 @@ void kasan_unpoison_shadow(const void *address, size_t size)
+ 	 */
+ 	address = reset_tag(address);
+ 
++	/*
++	 * Skip KFENCE memory if called explicitly outside of sl*b. Also note
++	 * that calls to ksize(), where size is not a multiple of machine-word
++	 * size, would otherwise poison the invalid portion of the word.
++	 */
++	if (is_kfence_address(address))
++		return;
++
+ 	kasan_poison_shadow(address, size, tag);
+ 
+ 	if (size & KASAN_SHADOW_MASK) {
+@@ -445,6 +458,9 @@ static bool __kasan_slab_free(struct kmem_cache *cache, void *object,
+ 	tagged_object = object;
+ 	object = reset_tag(object);
+ 
++	if (is_kfence_address(object))
++		return false;
++
+ 	if (unlikely(nearest_obj(cache, virt_to_head_page(object), object) !=
+ 	    object)) {
+ 		kasan_report_invalid_free(tagged_object, ip);
+@@ -493,6 +509,9 @@ static void *__kasan_kmalloc(struct kmem_cache *cache, const void *object,
+ 	if (unlikely(object == NULL))
+ 		return NULL;
+ 
++	if (is_kfence_address(kasan_reset_tag(object)))
++		return (void *)object;
++
+ 	redzone_start = round_up((unsigned long)(object + size),
+ 				KASAN_SHADOW_SCALE_SIZE);
+ 	redzone_end = round_up((unsigned long)object + cache->object_size,
+diff --git a/mm/kasan/report.c b/mm/kasan/report.c
+index 4d87df96acc1..783301f294de 100644
+--- a/mm/kasan/report.c
++++ b/mm/kasan/report.c
+@@ -29,6 +29,7 @@
+ #include <linux/kasan.h>
+ #include <linux/module.h>
+ #include <linux/sched/task_stack.h>
++#include <trace/events/error_report.h>
+ 
+ #include <asm/sections.h>
+ 
+@@ -87,8 +88,9 @@ static void start_report(unsigned long *flags)
+ 	pr_err("==================================================================\n");
+ }
+ 
+-static void end_report(unsigned long *flags)
++static void end_report(unsigned long *flags, unsigned long addr)
+ {
++	trace_error_report_end(ERROR_DETECTOR_KASAN, addr);
+ 	pr_err("==================================================================\n");
+ 	add_taint(TAINT_BAD_PAGE, LOCKDEP_NOW_UNRELIABLE);
+ 	spin_unlock_irqrestore(&report_lock, *flags);
+@@ -468,7 +470,7 @@ void kasan_report_invalid_free(void *object, unsigned long ip)
+ 	print_address_description(object, tag);
+ 	pr_err("\n");
+ 	print_shadow_for_address(object);
+-	end_report(&flags);
++	end_report(&flags, (unsigned long)object);
+ }
+ 
+ void __kasan_report(unsigned long addr, size_t size, bool is_write, unsigned long ip)
+@@ -510,5 +512,5 @@ void __kasan_report(unsigned long addr, size_t size, bool is_write, unsigned lon
+ 		dump_stack();
+ 	}
+ 
+-	end_report(&flags);
++	end_report(&flags, addr);
+ }
+diff --git a/mm/kmemleak.c b/mm/kmemleak.c
+index a7fc6b23c37e..dce9e2a42549 100644
+--- a/mm/kmemleak.c
++++ b/mm/kmemleak.c
+@@ -97,6 +97,7 @@
+ #include <linux/atomic.h>
+ 
+ #include <linux/kasan.h>
++#include <linux/kfence.h>
+ #include <linux/kmemleak.h>
+ #include <linux/memory_hotplug.h>
+ 
+@@ -592,7 +593,7 @@ static struct kmemleak_object *create_object(unsigned long ptr, size_t size,
+ 	atomic_set(&object->use_count, 1);
+ 	object->flags = OBJECT_ALLOCATED;
+ 	object->pointer = ptr;
+-	object->size = size;
++	object->size = kfence_ksize((void *)ptr) ?: size;
+ 	object->excess_ref = 0;
+ 	object->min_count = min_count;
+ 	object->count = 0;			/* white color initially */
+diff --git a/mm/slab.c b/mm/slab.c
+index 1a75a1204ff4..a9a5fb49373d 100644
+--- a/mm/slab.c
++++ b/mm/slab.c
+@@ -100,6 +100,7 @@
+ #include	<linux/seq_file.h>
+ #include	<linux/notifier.h>
+ #include	<linux/kallsyms.h>
++#include	<linux/kfence.h>
+ #include	<linux/cpu.h>
+ #include	<linux/sysctl.h>
+ #include	<linux/module.h>
+@@ -3219,18 +3220,28 @@ static void *____cache_alloc_node(struct kmem_cache *cachep, gfp_t flags,
+ }
+ 
+ static __always_inline void *
+-slab_alloc_node(struct kmem_cache *cachep, gfp_t flags, int nodeid,
++slab_alloc_node(struct kmem_cache *cachep, gfp_t flags, int nodeid, size_t orig_size,
+ 		   unsigned long caller)
+ {
+ 	unsigned long save_flags;
+ 	void *ptr;
+ 	int slab_node = numa_mem_id();
++	struct kmem_cache *orig_cachep = cachep;
+ 
+ 	flags &= gfp_allowed_mask;
+ 	cachep = slab_pre_alloc_hook(cachep, flags);
+ 	if (unlikely(!cachep))
+ 		return NULL;
+ 
++	/*
++	 * 5.4 note: passing in original cachep to avoid problems with memcg
++	 * accounting. Making KFENCE properly work with memcgs on older kernels
++	 * is not worth the effort.
++	 */
++	ptr = kfence_alloc(orig_cachep, orig_size, flags);
++	if (unlikely(ptr))
++		goto out_hooks;
++
+ 	cache_alloc_debugcheck_before(cachep, flags);
+ 	local_irq_save(save_flags);
+ 
+@@ -3263,6 +3274,7 @@ slab_alloc_node(struct kmem_cache *cachep, gfp_t flags, int nodeid,
+ 	if (unlikely(slab_want_init_on_alloc(flags, cachep)) && ptr)
+ 		memset(ptr, 0, cachep->object_size);
+ 
++out_hooks:
+ 	slab_post_alloc_hook(cachep, flags, 1, &ptr);
+ 	return ptr;
+ }
+@@ -3300,16 +3312,26 @@ __do_cache_alloc(struct kmem_cache *cachep, gfp_t flags)
+ #endif /* CONFIG_NUMA */
+ 
+ static __always_inline void *
+-slab_alloc(struct kmem_cache *cachep, gfp_t flags, unsigned long caller)
++slab_alloc(struct kmem_cache *cachep, gfp_t flags, size_t orig_size, unsigned long caller)
+ {
+ 	unsigned long save_flags;
+ 	void *objp;
++	struct kmem_cache *orig_cachep = cachep;
+ 
+ 	flags &= gfp_allowed_mask;
+ 	cachep = slab_pre_alloc_hook(cachep, flags);
+ 	if (unlikely(!cachep))
+ 		return NULL;
+ 
++	/*
++	 * 5.4 note: passing in original cachep to avoid problems with memcg
++	 * accounting. Making KFENCE properly work with memcgs on older kernels
++	 * is not worth the effort.
++	 */
++	objp = kfence_alloc(orig_cachep, orig_size, flags);
++	if (unlikely(objp))
++		goto out;
++
+ 	cache_alloc_debugcheck_before(cachep, flags);
+ 	local_irq_save(save_flags);
+ 	objp = __do_cache_alloc(cachep, flags);
+@@ -3320,6 +3342,7 @@ slab_alloc(struct kmem_cache *cachep, gfp_t flags, unsigned long caller)
+ 	if (unlikely(slab_want_init_on_alloc(flags, cachep)) && objp)
+ 		memset(objp, 0, cachep->object_size);
+ 
++out:
+ 	slab_post_alloc_hook(cachep, flags, 1, &objp);
+ 	return objp;
+ }
+@@ -3425,6 +3448,15 @@ static void cache_flusharray(struct kmem_cache *cachep, struct array_cache *ac)
+ static __always_inline void __cache_free(struct kmem_cache *cachep, void *objp,
+ 					 unsigned long caller)
+ {
++	if (is_kfence_address(objp)) {
++		kmemleak_free_recursive(objp, cachep->flags);
++		__kfence_free(objp);
++		return;
++	}
++
++	if (unlikely(slab_want_init_on_free(cachep)))
++		memset(objp, 0, cachep->object_size);
++
+ 	/* Put the object into the quarantine, don't touch it for now. */
+ 	if (kasan_slab_free(cachep, objp, _RET_IP_))
+ 		return;
+@@ -3438,8 +3470,6 @@ void ___cache_free(struct kmem_cache *cachep, void *objp,
+ 	struct array_cache *ac = cpu_cache_get(cachep);
+ 
+ 	check_irq_off();
+-	if (unlikely(slab_want_init_on_free(cachep)))
+-		memset(objp, 0, cachep->object_size);
+ 	kmemleak_free_recursive(objp, cachep->flags);
+ 	objp = cache_free_debugcheck(cachep, objp, caller);
+ 
+@@ -3484,7 +3514,7 @@ void ___cache_free(struct kmem_cache *cachep, void *objp,
+  */
+ void *kmem_cache_alloc(struct kmem_cache *cachep, gfp_t flags)
+ {
+-	void *ret = slab_alloc(cachep, flags, _RET_IP_);
++	void *ret = slab_alloc(cachep, flags, cachep->object_size, _RET_IP_);
+ 
+ 	trace_kmem_cache_alloc(_RET_IP_, ret,
+ 			       cachep->object_size, cachep->size, flags);
+@@ -3507,6 +3537,7 @@ int kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size,
+ 			  void **p)
+ {
+ 	size_t i;
++	struct kmem_cache *root_s = s;
+ 
+ 	s = slab_pre_alloc_hook(s, flags);
+ 	if (!s)
+@@ -3516,7 +3547,13 @@ int kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size,
+ 
+ 	local_irq_disable();
+ 	for (i = 0; i < size; i++) {
+-		void *objp = __do_cache_alloc(s, flags);
++		/*
++		 * 5.4 note: passing in original cachep to avoid problems with
++		 * memcg accounting. Making KFENCE properly work with memcgs on
++		 * older kernels is not worth the effort.
++		 */
++		void *objp = kfence_alloc(root_s, s->object_size, flags) ?:
++					  __do_cache_alloc(s, flags);
+ 
+ 		if (unlikely(!objp))
+ 			goto error;
+@@ -3549,7 +3586,7 @@ kmem_cache_alloc_trace(struct kmem_cache *cachep, gfp_t flags, size_t size)
+ {
+ 	void *ret;
+ 
+-	ret = slab_alloc(cachep, flags, _RET_IP_);
++	ret = slab_alloc(cachep, flags, size, _RET_IP_);
+ 
+ 	ret = kasan_kmalloc(cachep, ret, size, flags);
+ 	trace_kmalloc(_RET_IP_, ret,
+@@ -3575,7 +3612,7 @@ EXPORT_SYMBOL(kmem_cache_alloc_trace);
+  */
+ void *kmem_cache_alloc_node(struct kmem_cache *cachep, gfp_t flags, int nodeid)
+ {
+-	void *ret = slab_alloc_node(cachep, flags, nodeid, _RET_IP_);
++	void *ret = slab_alloc_node(cachep, flags, nodeid, cachep->object_size, _RET_IP_);
+ 
+ 	trace_kmem_cache_alloc_node(_RET_IP_, ret,
+ 				    cachep->object_size, cachep->size,
+@@ -3593,7 +3630,7 @@ void *kmem_cache_alloc_node_trace(struct kmem_cache *cachep,
+ {
+ 	void *ret;
+ 
+-	ret = slab_alloc_node(cachep, flags, nodeid, _RET_IP_);
++	ret = slab_alloc_node(cachep, flags, nodeid, size, _RET_IP_);
+ 
+ 	ret = kasan_kmalloc(cachep, ret, size, flags);
+ 	trace_kmalloc_node(_RET_IP_, ret,
+@@ -3654,7 +3691,7 @@ static __always_inline void *__do_kmalloc(size_t size, gfp_t flags,
+ 	cachep = kmalloc_slab(size, flags);
+ 	if (unlikely(ZERO_OR_NULL_PTR(cachep)))
+ 		return cachep;
+-	ret = slab_alloc(cachep, flags, caller);
++	ret = slab_alloc(cachep, flags, size, caller);
+ 
+ 	ret = kasan_kmalloc(cachep, ret, size, flags);
+ 	trace_kmalloc(caller, ret,
+@@ -4203,7 +4240,10 @@ void __check_heap_object(const void *ptr, unsigned long n, struct page *page,
+ 	BUG_ON(objnr >= cachep->num);
+ 
+ 	/* Find offset within object. */
+-	offset = ptr - index_to_obj(cachep, page, objnr) - obj_offset(cachep);
++	if (is_kfence_address(ptr))
++		offset = ptr - kfence_object_start(ptr);
++	else
++		offset = ptr - index_to_obj(cachep, page, objnr) - obj_offset(cachep);
+ 
+ 	/* Allow address range falling entirely within usercopy region. */
+ 	if (offset >= cachep->useroffset &&
+diff --git a/mm/slab_common.c b/mm/slab_common.c
+index ca398f6bfa48..f024c2067aa0 100644
+--- a/mm/slab_common.c
++++ b/mm/slab_common.c
+@@ -12,6 +12,7 @@
+ #include <linux/memory.h>
+ #include <linux/cache.h>
+ #include <linux/compiler.h>
++#include <linux/kfence.h>
+ #include <linux/module.h>
+ #include <linux/cpu.h>
+ #include <linux/uaccess.h>
+@@ -593,6 +594,7 @@ static void slab_caches_to_rcu_destroy_workfn(struct work_struct *work)
+ 	rcu_barrier();
+ 
+ 	list_for_each_entry_safe(s, s2, &to_destroy, list) {
++		kfence_shutdown_cache(s);
+ #ifdef SLAB_SUPPORTS_SYSFS
+ 		sysfs_slab_release(s);
+ #else
+@@ -619,6 +621,7 @@ static int shutdown_cache(struct kmem_cache *s)
+ 		list_add_tail(&s->list, &slab_caches_to_rcu_destroy);
+ 		schedule_work(&slab_caches_to_rcu_destroy_work);
+ 	} else {
++		kfence_shutdown_cache(s);
+ #ifdef SLAB_SUPPORTS_SYSFS
+ 		sysfs_slab_unlink(s);
+ 		sysfs_slab_release(s);
+@@ -1870,7 +1873,7 @@ size_t ksize(const void *objp)
+ 	if (unlikely(objp == ZERO_SIZE_PTR) || !__kasan_check_read(objp, 1))
+ 		return 0;
+ 
+-	size = __ksize(objp);
++	size = kfence_ksize(objp) ?: __ksize(objp);
+ 	/*
+ 	 * We assume that ksize callers could use whole allocated area,
+ 	 * so we need to unpoison this area.
+diff --git a/mm/slub.c b/mm/slub.c
+index ff869e0e2369..638736789987 100644
+--- a/mm/slub.c
++++ b/mm/slub.c
+@@ -28,6 +28,7 @@
+ #include <linux/ctype.h>
+ #include <linux/debugobjects.h>
+ #include <linux/kallsyms.h>
++#include <linux/kfence.h>
+ #include <linux/memory.h>
+ #include <linux/math64.h>
+ #include <linux/fault-inject.h>
+@@ -1486,6 +1487,11 @@ static inline bool slab_free_freelist_hook(struct kmem_cache *s,
+ 	void *old_tail = *tail ? *tail : *head;
+ 	int rsize;
+ 
++	if (is_kfence_address(next)) {
++		slab_free_hook(s, next);
++		return true;
++	}
++
+ 	/* Head and tail of the reconstructed freelist */
+ 	*head = NULL;
+ 	*tail = NULL;
+@@ -2770,16 +2776,27 @@ static __always_inline void maybe_wipe_obj_freeptr(struct kmem_cache *s,
+  * Otherwise we can simply pick the next object from the lockless free list.
+  */
+ static __always_inline void *slab_alloc_node(struct kmem_cache *s,
+-		gfp_t gfpflags, int node, unsigned long addr)
++		gfp_t gfpflags, int node, unsigned long addr, size_t orig_size)
+ {
+ 	void *object;
+ 	struct kmem_cache_cpu *c;
+ 	struct page *page;
+ 	unsigned long tid;
++	struct kmem_cache *root_s = s;
+ 
+ 	s = slab_pre_alloc_hook(s, gfpflags);
+ 	if (!s)
+ 		return NULL;
++
++	/*
++	 * 5.4 note: passing in original cachep to avoid problems with memcg
++	 * accounting. Making KFENCE properly work with memcgs on older kernels
++	 * is not worth the effort.
++	 */
++	object = kfence_alloc(root_s, orig_size, gfpflags);
++	if (unlikely(object))
++		goto out;
++
+ redo:
+ 	/*
+ 	 * Must read kmem_cache cpu data via this cpu ptr. Preemption is
+@@ -2853,20 +2870,21 @@ static __always_inline void *slab_alloc_node(struct kmem_cache *s,
+ 	if (unlikely(slab_want_init_on_alloc(gfpflags, s)) && object)
+ 		memset(object, 0, s->object_size);
+ 
++out:
+ 	slab_post_alloc_hook(s, gfpflags, 1, &object);
+ 
+ 	return object;
+ }
+ 
+ static __always_inline void *slab_alloc(struct kmem_cache *s,
+-		gfp_t gfpflags, unsigned long addr)
++		gfp_t gfpflags, unsigned long addr, size_t orig_size)
+ {
+-	return slab_alloc_node(s, gfpflags, NUMA_NO_NODE, addr);
++	return slab_alloc_node(s, gfpflags, NUMA_NO_NODE, addr, orig_size);
+ }
+ 
+ void *kmem_cache_alloc(struct kmem_cache *s, gfp_t gfpflags)
+ {
+-	void *ret = slab_alloc(s, gfpflags, _RET_IP_);
++	void *ret = slab_alloc(s, gfpflags, _RET_IP_, s->object_size);
+ 
+ 	trace_kmem_cache_alloc(_RET_IP_, ret, s->object_size,
+ 				s->size, gfpflags);
+@@ -2878,7 +2896,7 @@ EXPORT_SYMBOL(kmem_cache_alloc);
+ #ifdef CONFIG_TRACING
+ void *kmem_cache_alloc_trace(struct kmem_cache *s, gfp_t gfpflags, size_t size)
+ {
+-	void *ret = slab_alloc(s, gfpflags, _RET_IP_);
++	void *ret = slab_alloc(s, gfpflags, _RET_IP_, size);
+ 	trace_kmalloc(_RET_IP_, ret, size, s->size, gfpflags);
+ 	ret = kasan_kmalloc(s, ret, size, gfpflags);
+ 	return ret;
+@@ -2889,7 +2907,7 @@ EXPORT_SYMBOL(kmem_cache_alloc_trace);
+ #ifdef CONFIG_NUMA
+ void *kmem_cache_alloc_node(struct kmem_cache *s, gfp_t gfpflags, int node)
+ {
+-	void *ret = slab_alloc_node(s, gfpflags, node, _RET_IP_);
++	void *ret = slab_alloc_node(s, gfpflags, node, _RET_IP_, s->object_size);
+ 
+ 	trace_kmem_cache_alloc_node(_RET_IP_, ret,
+ 				    s->object_size, s->size, gfpflags, node);
+@@ -2903,7 +2921,7 @@ void *kmem_cache_alloc_node_trace(struct kmem_cache *s,
+ 				    gfp_t gfpflags,
+ 				    int node, size_t size)
+ {
+-	void *ret = slab_alloc_node(s, gfpflags, node, _RET_IP_);
++	void *ret = slab_alloc_node(s, gfpflags, node, _RET_IP_, size);
+ 
+ 	trace_kmalloc_node(_RET_IP_, ret,
+ 			   size, s->size, gfpflags, node);
+@@ -2937,6 +2955,9 @@ static void __slab_free(struct kmem_cache *s, struct page *page,
+ 
+ 	stat(s, FREE_SLOWPATH);
+ 
++	if (kfence_free(head))
++		return;
++
+ 	if (kmem_cache_debug(s) &&
+ 	    !free_debug_processing(s, page, head, tail, cnt, addr))
+ 		return;
+@@ -3178,6 +3199,13 @@ int build_detached_freelist(struct kmem_cache *s, size_t size,
+ 		df->s = cache_from_obj(s, object); /* Support for memcg */
+ 	}
+ 
++	if (is_kfence_address(object)) {
++		slab_free_hook(df->s, object);
++		__kfence_free(object);
++		p[size] = NULL; /* mark object processed */
++		return size;
++	}
++
+ 	/* Start new detached freelist */
+ 	df->page = page;
+ 	set_freepointer(df->s, object, NULL);
+@@ -3237,6 +3265,7 @@ int kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size,
+ {
+ 	struct kmem_cache_cpu *c;
+ 	int i;
++	struct kmem_cache *root_s = s;
+ 
+ 	/* memcg and kmem_cache debug support */
+ 	s = slab_pre_alloc_hook(s, flags);
+@@ -3251,8 +3280,19 @@ int kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size,
+ 	c = this_cpu_ptr(s->cpu_slab);
+ 
+ 	for (i = 0; i < size; i++) {
+-		void *object = c->freelist;
++		/*
++		 * 5.4 note: passing in original cachep to avoid problems with memcg
++		 * accounting. Making KFENCE properly work with memcgs on older kernels
++		 * is not worth the effort.
++		 */
++		void *object = kfence_alloc(root_s, s->object_size, flags);
+ 
++		if (unlikely(object)) {
++			p[i] = object;
++			continue;
++		}
++
++		object = c->freelist;
+ 		if (unlikely(!object)) {
+ 			/*
+ 			 * We may have removed an object from c->freelist using
+@@ -3911,7 +3951,7 @@ void *__kmalloc(size_t size, gfp_t flags)
+ 	if (unlikely(ZERO_OR_NULL_PTR(s)))
+ 		return s;
+ 
+-	ret = slab_alloc(s, flags, _RET_IP_);
++	ret = slab_alloc(s, flags, _RET_IP_, size);
+ 
+ 	trace_kmalloc(_RET_IP_, ret, size, s->size, flags);
+ 
+@@ -3959,7 +3999,7 @@ void *__kmalloc_node(size_t size, gfp_t flags, int node)
+ 	if (unlikely(ZERO_OR_NULL_PTR(s)))
+ 		return s;
+ 
+-	ret = slab_alloc_node(s, flags, node, _RET_IP_);
++	ret = slab_alloc_node(s, flags, node, _RET_IP_, size);
+ 
+ 	trace_kmalloc_node(_RET_IP_, ret, size, s->size, flags, node);
+ 
+@@ -3985,6 +4025,7 @@ void __check_heap_object(const void *ptr, unsigned long n, struct page *page,
+ 	struct kmem_cache *s;
+ 	unsigned int offset;
+ 	size_t object_size;
++	bool is_kfence = is_kfence_address(ptr);
+ 
+ 	ptr = kasan_reset_tag(ptr);
+ 
+@@ -3997,10 +4038,13 @@ void __check_heap_object(const void *ptr, unsigned long n, struct page *page,
+ 			       to_user, 0, n);
+ 
+ 	/* Find offset within object. */
+-	offset = (ptr - page_address(page)) % s->size;
++	if (is_kfence)
++		offset = ptr - kfence_object_start(ptr);
++	else
++		offset = (ptr - page_address(page)) % s->size;
+ 
+ 	/* Adjust for redzone and reject if within the redzone. */
+-	if (kmem_cache_debug(s) && s->flags & SLAB_RED_ZONE) {
++	if (!is_kfence && kmem_cache_debug(s) && s->flags & SLAB_RED_ZONE) {
+ 		if (offset < s->red_left_pad)
+ 			usercopy_abort("SLUB object in left red zone",
+ 				       s->name, to_user, offset, n);
+@@ -4447,7 +4491,7 @@ void *__kmalloc_track_caller(size_t size, gfp_t gfpflags, unsigned long caller)
+ 	if (unlikely(ZERO_OR_NULL_PTR(s)))
+ 		return s;
+ 
+-	ret = slab_alloc(s, gfpflags, caller);
++	ret = slab_alloc(s, gfpflags, caller, size);
+ 
+ 	/* Honor the call site pointer we received. */
+ 	trace_kmalloc(caller, ret, size, s->size, gfpflags);
+@@ -4478,7 +4522,7 @@ void *__kmalloc_node_track_caller(size_t size, gfp_t gfpflags,
+ 	if (unlikely(ZERO_OR_NULL_PTR(s)))
+ 		return s;
+ 
+-	ret = slab_alloc_node(s, gfpflags, node, caller);
++	ret = slab_alloc_node(s, gfpflags, node, caller, size);
+ 
+ 	/* Honor the call site pointer we received. */
+ 	trace_kmalloc_node(caller, ret, size, s->size, gfpflags, node);
+diff --git a/net/core/skbuff.c b/net/core/skbuff.c
+index 0b21a9902e29..a7e5b5843539 100644
+--- a/net/core/skbuff.c
++++ b/net/core/skbuff.c
+@@ -3359,19 +3359,7 @@ EXPORT_SYMBOL(skb_split);
+  */
+ static int skb_prepare_for_shift(struct sk_buff *skb)
+ {
+-	int ret = 0;
+-
+-	if (skb_cloned(skb)) {
+-		/* Save and restore truesize: pskb_expand_head() may reallocate
+-		 * memory where ksize(kmalloc(S)) != ksize(kmalloc(S)), but we
+-		 * cannot change truesize at this point.
+-		 */
+-		unsigned int save_truesize = skb->truesize;
+-
+-		ret = pskb_expand_head(skb, 0, 0, GFP_ATOMIC);
+-		skb->truesize = save_truesize;
+-	}
+-	return ret;
++	return skb_unclone_keeptruesize(skb, GFP_ATOMIC);
+ }
+ 
+ /**
+diff --git a/net/ipv4/tcp_output.c b/net/ipv4/tcp_output.c
+index cd252f530a2e..9a6e8eb85bdb 100644
+--- a/net/ipv4/tcp_output.c
++++ b/net/ipv4/tcp_output.c
+@@ -1492,7 +1492,7 @@ int tcp_fragment(struct sock *sk, enum tcp_queue tcp_queue,
+ 		return -ENOMEM;
+ 	}
+ 
+-	if (skb_unclone(skb, gfp))
++	if (skb_unclone_keeptruesize(skb, gfp))
+ 		return -ENOMEM;
+ 
+ 	/* Get a new skb... force flag on. */
+@@ -1601,7 +1601,7 @@ int tcp_trim_head(struct sock *sk, struct sk_buff *skb, u32 len)
+ {
+ 	u32 delta_truesize;
+ 
+-	if (skb_unclone(skb, GFP_ATOMIC))
++	if (skb_unclone_keeptruesize(skb, GFP_ATOMIC))
+ 		return -ENOMEM;
+ 
+ 	delta_truesize = __pskb_trim_head(skb, len);
+@@ -3160,7 +3160,7 @@ int __tcp_retransmit_skb(struct sock *sk, struct sk_buff *skb, int segs)
+ 				 cur_mss, GFP_ATOMIC))
+ 			return -ENOMEM; /* We'll try again later. */
+ 	} else {
+-		if (skb_unclone(skb, GFP_ATOMIC))
++		if (skb_unclone_keeptruesize(skb, GFP_ATOMIC))
+ 			return -ENOMEM;
+ 
+ 		diff = tcp_skb_pcount(skb);
+diff --git a/scripts/Kconfig.include b/scripts/Kconfig.include
+index 496d11c92c97..363c354e9562 100644
+--- a/scripts/Kconfig.include
++++ b/scripts/Kconfig.include
+@@ -51,3 +51,9 @@ gcc-version := $(shell,$(srctree)/scripts/gcc-version.sh $(CC))
+ cc-option-bit = $(if-success,$(CC) -Werror $(1) -E -x c /dev/null -o /dev/null,$(1))
+ m32-flag := $(cc-option-bit,-m32)
+ m64-flag := $(cc-option-bit,-m64)
++
++# Get the assembler name, version, and error out if it is not supported.
++as-info := $(shell,$(srctree)/scripts/as-version.sh $(CC) $(CLANG_FLAGS))
++$(error-if,$(success,test -z "$(as-info)"),Sorry$(comma) this assembler is not supported.)
++as-name := $(shell,set -- $(as-info) && echo $1)
++as-version := $(shell,set -- $(as-info) && echo $2)
+diff --git a/tools/testing/selftests/kselftest_module.h b/tools/testing/selftests/kselftest_module.h
+index e8eafaf0941a..e2ea41de3f35 100644
+--- a/tools/testing/selftests/kselftest_module.h
++++ b/tools/testing/selftests/kselftest_module.h
+@@ -11,7 +11,8 @@
+ 
+ #define KSTM_MODULE_GLOBALS()			\
+ static unsigned int total_tests __initdata;	\
+-static unsigned int failed_tests __initdata
++static unsigned int failed_tests __initdata;	\
++static unsigned int skipped_tests __initdata
+ 
+ #define KSTM_CHECK_ZERO(x) do {						\
+ 	total_tests++;							\
+@@ -21,11 +22,16 @@ static unsigned int failed_tests __initdata
+ 	}								\
+ } while (0)
+ 
+-static inline int kstm_report(unsigned int total_tests, unsigned int failed_tests)
++static inline int kstm_report(unsigned int total_tests, unsigned int failed_tests,
++			      unsigned int skipped_tests)
+ {
+-	if (failed_tests == 0)
+-		pr_info("all %u tests passed\n", total_tests);
+-	else
++	if (failed_tests == 0) {
++		if (skipped_tests) {
++			pr_info("skipped %u tests\n", skipped_tests);
++			pr_info("remaining %u tests passed\n", total_tests);
++		} else
++			pr_info("all %u tests passed\n", total_tests);
++	} else
+ 		pr_warn("failed %u out of %u tests\n", failed_tests, total_tests);
+ 
+ 	return failed_tests ? -EINVAL : 0;
+@@ -36,7 +42,7 @@ static int __init __module##_init(void)			\
+ {							\
+ 	pr_info("loaded.\n");				\
+ 	selftest();					\
+-	return kstm_report(total_tests, failed_tests);	\
++	return kstm_report(total_tests, failed_tests, skipped_tests);	\
+ }							\
+ static void __exit __module##_exit(void)		\
+ {							\
+

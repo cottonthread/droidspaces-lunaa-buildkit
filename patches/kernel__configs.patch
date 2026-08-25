@@ -1,0 +1,14 @@
+diff --git a/t/android-5.4/android-base.config b/t/android-5.4/android-base.config
+index 52bf43d..a164c52 100644
+--- a/t/android-5.4/android-base.config
++++ b/t/android-5.4/android-base.config
+@@ -11,7 +11,7 @@
+ # CONFIG_NFS_FS is not set
+ # CONFIG_PM_AUTOSLEEP is not set
+ # CONFIG_RT_GROUP_SCHED is not set
+-# CONFIG_SYSVIPC is not set
++CONFIG_SYSVIPC=y
+ # CONFIG_USELIB is not set
+ CONFIG_ADVISE_SYSCALLS=y
+ CONFIG_AIO=y
+

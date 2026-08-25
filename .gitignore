@@ -1,0 +1,20 @@
+# Build output and local state — never commit these.
+out*/
+*.log
+*.exit
+.DS_Store
+*.pyc
+__pycache__/
+
+# Local secrets / credentials — never commit.
+*.key
+*.pk8
+*.pem
+id_rsa*
+*.token
+.gh_token
+
+# Downloaded upstream archives and locally generated bundles.
+# These belong in GitHub Releases, not in Git history.
+release/
+bundles/

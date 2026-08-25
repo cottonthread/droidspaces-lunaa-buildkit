@@ -1,0 +1,46 @@
+# NOTICE
+
+This repository ("buildkit") is a reproducibility tool for rebuilding a
+LineageOS 23.2 (Android 16) firmware image with Droidspaces-compatible kernel
+support for the Realme GT Master Edition (lunaa / RE54ABL1 / RMX3360).
+
+It contains:
+
+- A frozen repo manifest (`manifests/frozen-20260825.xml`) that pins the exact
+  revision of every upstream git project used for the 2026-08-25 build.
+- Per-project patches (`patches/`) and kernel overlay files (`overlays/`) that
+  capture only the local modifications applied on top of those pinned
+  revisions. These were produced by splitting the archived
+  `droidspaces-final-tracked-20260825.diff` and the allow-listed contents of
+  `droidspaces-full-preflight-kernel-untracked.tar.gz`.
+- Stage scripts (`scripts/`) that reproduce the build in a fresh source tree.
+
+## Upstream attribution and licensing
+
+The patches and overlays modify files that originate from the following
+upstream projects. Their respective licenses and copyrights remain with their
+original authors and are not transferred or re-licensed by this repository:
+
+- LineageOS platform projects (`https://github.com/LineageOS/`),
+  primarily Apache License 2.0.
+- Android Open Source Project (`https://android.googlesource.com/`),
+  primarily Apache License 2.0.
+- Linux kernel (`kernel/oneplus/sm8350`), GPL-2.0-only (with system exceptions
+  where applicable in this tree).
+- Device and vendor trees by `pjgowtham`
+  (`https://github.com/pjgowtham/`, `https://gitlab.com/pjgowtham/`).
+  The two `vendor/*` projects contain proprietary Qualcomm/OnePlus/Realme
+  blobs; their redistribution terms are those of the original vendors and must
+  be reviewed before any public re-distribution.
+
+## What this repository is NOT
+
+- It does not contain a full copy of the AOSP/LineageOS source tree.
+- It does not contain Droidspaces userspace, application, or Magisk module
+  code; only the kernel-side kABI/config changes are captured.
+- It does not contain private release signing keys. Do not commit any keys.
+- The produced firmware is `userdebug`/`test-keys`; independent AVB
+  cryptographic verification was not completed in the original run and remains
+  an explicit, documented gap.
+
+For details see `README.md` and the documents under `docs/`.
