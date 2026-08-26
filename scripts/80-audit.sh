@@ -37,6 +37,29 @@ done
 ledger() { printf '%s=%s\n' "$1" "$2"; }
 : > "$AUDIT/audit-status.txt"
 
+# Build and package prerequisites must be part of the same mandatory ledger;
+# a missing build exit file or a corrupt archive is not an audited success.
+BUILD_EXIT_FILE="$ROOT/droidspaces-full-build.exit"
+[ -f "$BUILD_EXIT_FILE" ] || die "build exit file missing: $BUILD_EXIT_FILE"
+[ "$(tr -d '\r\n' < "$BUILD_EXIT_FILE")" = 0 ] \
+  || die "full build exit is not zero"
+ledger build_exit 0 >> "$AUDIT/audit-status.txt"
+
+log "checking OTA, target-files and images ZIP integrity"
+unzip -t "$OTA" > "$AUDIT/ota-zip-test.txt" 2>&1 \
+  || die "OTA ZIP failed integrity test"
+ledger ota_zip_test 0 >> "$AUDIT/audit-status.txt"
+unzip -t "$TARGET_FILES" > "$AUDIT/target-files-zip-test.txt" 2>&1 \
+  || die "target-files ZIP failed integrity test"
+ledger target_files_zip_test 0 >> "$AUDIT/audit-status.txt"
+# 70-package.sh creates IMAGE_ZIP and records its path in droidspaces-package.env;
+# reaching this point with that non-empty file is the generation assertion.
+[ -s "$IMAGE_ZIP" ] || die "images ZIP generation result missing or empty"
+ledger image_zip_generation 0 >> "$AUDIT/audit-status.txt"
+unzip -t "$IMAGE_ZIP" > "$AUDIT/images-zip-test.txt" 2>&1 \
+  || die "images ZIP failed integrity test"
+ledger image_zip_test 0 >> "$AUDIT/audit-status.txt"
+
 # 9.2 OTA + payload signature
 log "checking OTA + payload signatures"
 unzip -p "$OTA" META-INF/com/android/otacert > "$AUDIT/otacert.x509.pem" || die "otacert extract failed"
