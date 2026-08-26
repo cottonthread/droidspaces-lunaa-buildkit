@@ -10,13 +10,16 @@ log "=== 70-package ==="
 cd "$ROOT"
 OUT="$OUT_DIR"
 GRAPH="$OUT/combined-lineage_lunaa.ninja"
-TARGET="$OUT/target/product/lunaa/obj/PACKAGING/target_files_intermediates/lineage_lunaa-target_files.zip"
+TARGET_REL="$OUT_REL/target/product/lunaa/obj/PACKAGING/target_files_intermediates/lineage_lunaa-target_files.zip"
+TARGET="$ROOT/$TARGET_REL"
 
-# 1) Build the official target-files ZIP via the explicit ninja target.
+# 1) Build the official target-files ZIP via the explicit ninja target. Ninja
+# target names in the Android graph are source-root-relative, even though later
+# tools and the package manifest use the absolute artifact path.
 log "building target-files ZIP"
 [ -f "$GRAPH" ] || die "ninja graph not found: $GRAPH"
 "$ROOT/prebuilts/build-tools/linux-x86/bin/ninja" \
-  -f "$GRAPH" "-j${BUILD_JOBS}" "$TARGET" || die "target-files build failed"
+  -f "$GRAPH" "-j${BUILD_JOBS}" "$TARGET_REL" || die "target-files build failed"
 
 # 2) Locate the single OTA package.
 mapfile -t OTAS < <(compgen -G "$OUT/target/product/lunaa/lineage-23.2-*-UNOFFICIAL-lunaa.zip")
