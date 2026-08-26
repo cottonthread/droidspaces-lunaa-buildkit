@@ -8,6 +8,7 @@
 # binary) and swallowed failures with `|| true`; both are forbidden here.
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+require_root
 
 log "=== 80-audit ==="
 

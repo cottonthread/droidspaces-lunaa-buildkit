@@ -27,18 +27,22 @@ else
   log "WARN: 'repo' not on PATH — install it before 20-sync-sources.sh"
 fi
 
-# 4) Filesystem type on $ROOT (must not be DrvFS/NTFS)
-FS="$(stat -f -c %T "$ROOT" 2>/dev/null || true)"
-log "filesystem of $ROOT: ${FS:-unknown}"
+# 4) Filesystem type at $ROOT, or its nearest existing parent on a fresh host.
+CHECK_PATH="$ROOT"
+while [ ! -e "$CHECK_PATH" ] && [ "$CHECK_PATH" != "/" ]; do
+  CHECK_PATH="$(dirname "$CHECK_PATH")"
+done
+FS="$(stat -f -c %T "$CHECK_PATH" 2>/dev/null || true)"
+log "filesystem for $ROOT (checked at $CHECK_PATH): ${FS:-unknown}"
 case "$FS" in
   ntfs|drvfs|9p|vboxsf|fuseblk|smb*|cifs) die "unsupported filesystem $FS — use ext4 (or native Linux fs)";;
 esac
 
-# 5) Disk free (default: require >= 400 GiB on $ROOT)
+# 5) Disk free (default: require >= 400 GiB on the same filesystem as $ROOT)
 NEED_DISK="${NEED_DISK:-400}"
 need_bytes=$(( NEED_DISK * 1024 * 1024 * 1024 ))
-avail_bytes="$(df -PB1 "$ROOT" | awk 'NR==2 {print $4}')"
-log "free disk on $ROOT: $(( avail_bytes / 1024 / 1024 / 1024 )) GiB (need ${NEED_DISK} GiB)"
+avail_bytes="$(df -PB1 "$CHECK_PATH" | awk 'NR==2 {print $4}')"
+log "free disk for $ROOT: $(( avail_bytes / 1024 / 1024 / 1024 )) GiB (need ${NEED_DISK} GiB)"
 [ "${avail_bytes:-0}" -ge "$need_bytes" ] || die "insufficient free disk"
 
 # 6) RAM + swap (documented WSL: ~28 GiB RAM / 48 GiB swap)

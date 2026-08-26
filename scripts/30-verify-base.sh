@@ -5,6 +5,7 @@
 # Run:  ROOT=/path/to/tree bash scripts/30-verify-base.sh
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+require_root
 
 log "=== 30-verify-base ==="
 require_cmd repo

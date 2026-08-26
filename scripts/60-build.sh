@@ -7,6 +7,7 @@
 # Success is judged ONLY by the exit file, never by tmux session state.
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+require_root
 
 log "=== 60-build ==="
 

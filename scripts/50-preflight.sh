@@ -5,6 +5,7 @@
 # Run:  ROOT=/path/to/tree OUT_REL=out-droidspaces-full bash scripts/50-preflight.sh
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+require_root
 
 log "=== 50-preflight ==="
 

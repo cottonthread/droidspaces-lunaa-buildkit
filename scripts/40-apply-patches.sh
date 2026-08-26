@@ -5,6 +5,7 @@
 # Run:  ROOT=/path/to/tree bash scripts/40-apply-patches.sh
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+require_root
 
 log "=== 40-apply-patches ==="
 

@@ -20,10 +20,11 @@ KIT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # --- source tree root -------------------------------------------------------
 # Default: $HOME/realme (the documented WSL layout). Override with ROOT=...
 ROOT="${ROOT:-$HOME/realme}"
-if [ ! -d "$ROOT" ]; then
-  echo "ERROR: source root not found: $ROOT (set ROOT=/path/to/tree)" >&2
-  exit 1
-fi
+# Dependency installation and initial source sync must also work before ROOT
+# exists. Stages that consume a synced tree call require_root explicitly.
+require_root() {
+  [ -d "$ROOT" ] || die "source root not found: $ROOT (run 20-sync-sources.sh first)"
+}
 
 # --- output -----------------------------------------------------------------
 OUT_REL="${OUT_REL:-out-droidspaces-full}"
