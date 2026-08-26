@@ -92,9 +92,11 @@ for kernel in root.findall('kernel'):
         vals = [c.findtext('value') for c in kernel.findall('config')
                 if c.findtext('key') == 'CONFIG_SYSVIPC']
         blocks.append(vals)
-if not blocks or any(vals != ['y'] for vals in blocks):
-    raise SystemExit({'CONFIG_SYSVIPC per 5.4 block': blocks})
-print(f'FCM 7 SYSVIPC=y in {len(blocks)} 5.4 block(s)')
+declaring_blocks = [vals for vals in blocks if vals]
+if not blocks or not declaring_blocks or any(vals != ['y'] for vals in declaring_blocks):
+    raise SystemExit({'CONFIG_SYSVIPC declarations in 5.4 blocks': blocks})
+print(f'FCM 7 SYSVIPC=y in {len(declaring_blocks)} declaring block(s) '
+      f'across {len(blocks)} 5.4 block(s)')
 PY
 [ $? -eq 0 ] || die "FCM 7 SYSVIPC post-build assertion failed"
 ledger fcm_sysvipc_check 0 >> "$AUDIT/audit-status.txt"

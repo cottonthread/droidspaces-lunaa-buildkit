@@ -610,7 +610,7 @@ VINTF_LOG="$OUT_DIR/target/product/lunaa/obj/PACKAGING/check_vintf_all_intermedi
 tail -n 1 "$VINTF_LOG" | grep -qx COMPATIBLE
 ```
 
-确认FCM 7的全部5.4 block要求SYSVIPC `y`：
+确认FCM 7的5.4 Kernel要求中至少有一个block声明SYSVIPC，且所有实际声明该key的block都要求 `y`。同一版本的其他增量block可以不重复该key：
 
 ```bash
 python3 - <<'PY'
@@ -627,8 +627,10 @@ for kernel in root.findall('kernel'):
             if config.findtext('key') == 'CONFIG_SYSVIPC':
                 values.append(config.findtext('value'))
         blocks.append(values)
-if not blocks or any(values != ['y'] for values in blocks):
-    raise SystemExit({"CONFIG_SYSVIPC per 5.4 block": blocks})
+declaring_blocks = [values for values in blocks if values]
+if (not blocks or not declaring_blocks or
+        any(values != ['y'] for values in declaring_blocks)):
+    raise SystemExit({"CONFIG_SYSVIPC declarations in 5.4 blocks": blocks})
 PY
 ```
 
