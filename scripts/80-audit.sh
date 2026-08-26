@@ -105,24 +105,39 @@ for image in boot.img dtbo.img vendor_boot.img; do
   ledger "avb_verify_${image%.img}" 0 >> "$AUDIT/audit-status.txt"
 done
 
-# Follow the vbmeta chain to validate chained partitions.
-# shellcheck disable=SC2086
+# Follow the vbmeta chain to validate chained partitions. avbtool requires one
+# --expected_chain_partition flag per descriptor; raw positional descriptors are
+# not accepted. Word splitting is intentional here because each descriptor must
+# not contain whitespace.
+read -r -a CHAIN_SPECS <<< "$AVB_CHAIN_SPECS"
+CHAIN_ARGS=()
+for spec in "${CHAIN_SPECS[@]}"; do
+  CHAIN_ARGS+=(--expected_chain_partition "$spec")
+done
 "$AVB" verify_image \
   --image "$IMAGES/vbmeta.img" \
   --key "$AVB_KEY" \
   --follow_chain_partitions \
-  $AVB_CHAIN_SPECS \
+  "${CHAIN_ARGS[@]}" \
   > "$AUDIT/verify-vbmeta-chain.txt" 2>&1 || die "avbtool vbmeta chain verification failed"
 ledger avb_verify_chain 0 >> "$AUDIT/audit-status.txt"
 rm -rf "$IMAGES"
 log "AVB parse + verify OK (test-key identity)"
 
-# 9.5 SHA-256
+# 9.6 SHA-256. Record paths relative to ROOT so artifacts in different output
+# subdirectories remain verifiable without embedding a local absolute path.
 log "capturing SHA-256"
-( cd "$(dirname "$IMAGE_ZIP")" && sha256sum \
-    "$(basename "$OTA")" "$(basename "$TARGET_FILES")" "$(basename "$IMAGE_ZIP")" ) \
-  > "$AUDIT/SHA256SUMS" || die "sha256sum failed"
-sha256sum -c "$AUDIT/SHA256SUMS" || die "SHA-256 verification failed"
+for f in "$OTA" "$TARGET_FILES" "$IMAGE_ZIP"; do
+  case "$f" in
+    "$ROOT"/*) ;;
+    *) die "artifact is outside source root: $f" ;;
+  esac
+done
+(
+  cd "$ROOT"
+  sha256sum "${OTA#"$ROOT"/}" "${TARGET_FILES#"$ROOT"/}" "${IMAGE_ZIP#"$ROOT"/}"
+) > "$AUDIT/SHA256SUMS" || die "sha256sum failed"
+( cd "$ROOT" && sha256sum -c "$AUDIT/SHA256SUMS" ) || die "SHA-256 verification failed"
 ledger archive_sha256_verify 0 >> "$AUDIT/audit-status.txt"
 
 ledger postbuild_exit 0 >> "$AUDIT/audit-status.txt"
