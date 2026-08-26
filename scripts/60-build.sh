@@ -34,6 +34,20 @@ export KBUILD_BUILD_HOST="${KBUILD_BUILD_HOST:-repro-build}"
 
 source build/envsetup.sh
 breakfast lunaa
+
+# repo v2.66+ maintains JSON caches beside each Git config. The LineageOS
+# build-manifest rule invokes `repo manifest` inside the Ninja sandbox, where
+# HOME and the source tree are read-only. Generate a resolved manifest here,
+# before entering Ninja, so all repo config caches are populated while writes
+# are allowed. Keep the useful provenance output under OUT.
+RESOLVED_MANIFEST_DIR="$OUT_DIR/reproducibility"
+RESOLVED_MANIFEST="$RESOLVED_MANIFEST_DIR/resolved-manifest-before-build.xml"
+mkdir -p "$RESOLVED_MANIFEST_DIR"
+log "prewarming repo config caches and exporting resolved manifest"
+python3 .repo/repo/repo manifest -r -o "$RESOLVED_MANIFEST" \
+  || die "resolved manifest export / repo cache prewarm failed"
+[ -s "$RESOLVED_MANIFEST" ] || die "resolved manifest is empty: $RESOLVED_MANIFEST"
+
 m "-j${BUILD_JOBS}" bacon
 
 # Exit code is captured by the EXIT trap above.

@@ -723,6 +723,14 @@ tmux new-session -d -s droidspaces-full-build \
 test "$(cat $SRC_ROOT/droidspaces-full-build.exit)" = 0
 ```
 
+> [!NOTE] `repo` 2.66+ 与 Ninja 只读沙箱
+> `scripts/60-build.sh` 会在启动 `bacon` 前把 resolved manifest 导出到
+> `$OUT_DIR/reproducibility/resolved-manifest-before-build.xml`。这不仅保存本次
+> 源码身份，也会在可写环境中预热 `repo` 的 Git-config JSON 缓存。否则
+> LineageOS 生成 `build-manifest.xml` 时可能在 Ninja 只读沙箱内尝试写入
+> `~/.repo_.gitconfig.json`，并以 `Read-only file system` 失败。不要用
+> `BUILD_BROKEN_SRC_DIR_IS_WRITABLE := true` 放宽整个源码树来绕过该问题。
+
 > [!NOTE]
 > 归档的attempt 7脚本直接运行已生成Ninja graph，是多次增量修复后的成功恢复脚本。全新环境应优先通过 `envsetup + breakfast + m`生成graph，不应假设旧graph存在。
 
