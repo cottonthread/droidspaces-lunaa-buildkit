@@ -84,7 +84,6 @@ AVB="$HOST/avbtool"
 # Test-key build key. For a private-key build, set AVB_KEY and AVB_CHAIN_SPECS
 # to the corresponding key material and per-partition chain descriptors.
 AVB_KEY="${AVB_KEY:-$ROOT/external/avb/test/data/testkey_rsa4096.pem}"
-AVB_CHAIN_SPECS="${AVB_CHAIN_SPECS:-vbmeta_system:2:$AVB_KEY vbmeta_vendor:5:$AVB_KEY}"
 
 # WARNING: partition names, chain indexes, rollback locations and key paths MUST
 # be confirmed against the current `avbtool info_image` output and
@@ -93,6 +92,12 @@ AVB_CHAIN_SPECS="${AVB_CHAIN_SPECS:-vbmeta_system:2:$AVB_KEY vbmeta_vendor:5:$AV
 
 IMAGES="$(mktemp -d)"
 unzip -q "$IMAGE_ZIP" -d "$IMAGES" || die "failed to extract images ZIP"
+AVB_PUBKEY="$IMAGES/expected-key.avbpubkey"
+"$AVB" extract_public_key --key "$AVB_KEY" --output "$AVB_PUBKEY" \
+  || die "failed to extract expected AVB public key"
+# Each item is PARTITION:ROLLBACK_SLOT. The required binary public-key blob is
+# appended below. Override only after checking the current misc_info.txt.
+AVB_CHAIN_SPECS="${AVB_CHAIN_SPECS:-boot:4 dtbo:3 vendor_boot:1 vbmeta_system:2 vbmeta_vendor:5}"
 
 for image in boot.img dtbo.img vendor_boot.img vbmeta.img vbmeta_system.img vbmeta_vendor.img; do
   "$AVB" info_image --image "$IMAGES/$image" > "$AUDIT/avb-$image.txt" 2>&1 \
@@ -109,11 +114,12 @@ done
 # Follow the vbmeta chain to validate chained partitions. avbtool requires one
 # --expected_chain_partition flag per descriptor; raw positional descriptors are
 # not accepted. Word splitting is intentional here because each descriptor must
-# not contain whitespace.
+# not contain whitespace. expected_chain_partition requires an AVB public-key
+# blob, not the PEM accepted by verify_image --key.
 read -r -a CHAIN_SPECS <<< "$AVB_CHAIN_SPECS"
 CHAIN_ARGS=()
 for spec in "${CHAIN_SPECS[@]}"; do
-  CHAIN_ARGS+=(--expected_chain_partition "$spec")
+  CHAIN_ARGS+=(--expected_chain_partition "$spec:$AVB_PUBKEY")
 done
 "$AVB" verify_image \
   --image "$IMAGES/vbmeta.img" \
