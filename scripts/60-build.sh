@@ -13,8 +13,8 @@ log "=== 60-build ==="
 
 cd "$ROOT"
 
-LOG="$ROOT/droidspaces-full-build.log"
-EXIT_FILE="$ROOT/droidspaces-full-build.exit"
+LOG="${BUILD_LOG:-$ROOT/droidspaces-full-build.log}"
+EXIT_FILE="${BUILD_EXIT_FILE:-$ROOT/droidspaces-full-build.exit}"
 
 rm -f "$EXIT_FILE"
 exec > >(tee -a "$LOG") 2>&1
@@ -31,6 +31,10 @@ export BUILD_USERNAME="${BUILD_USERNAME:-android}"
 export BUILD_HOSTNAME="${BUILD_HOSTNAME:-repro-build}"
 export KBUILD_BUILD_USER="${KBUILD_BUILD_USER:-android}"
 export KBUILD_BUILD_HOST="${KBUILD_BUILD_HOST:-repro-build}"
+# Android's sanitized Ninja environment does not reliably pass arbitrary KBUILD
+# variables to the external Kernel make. The Lineage Kernel rule explicitly
+# forwards TARGET_KERNEL_ADDITIONAL_FLAGS, so bind the public identity there too.
+export TARGET_KERNEL_ADDITIONAL_FLAGS="${TARGET_KERNEL_ADDITIONAL_FLAGS:+$TARGET_KERNEL_ADDITIONAL_FLAGS }KBUILD_BUILD_USER=$KBUILD_BUILD_USER KBUILD_BUILD_HOST=$KBUILD_BUILD_HOST"
 
 source build/envsetup.sh
 breakfast lunaa

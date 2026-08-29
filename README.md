@@ -9,7 +9,7 @@
 公开版资料：
 
 - 验证边界与已知限制：[验证摘要](docs/validation-summary.md)
-- 精确 Droidspaces Kernel source branch：[`droidspaces-lunaa-20260825`](https://github.com/cottonthread/android_kernel_oneplus_sm8350/tree/droidspaces-lunaa-20260825)
+- 精确 Droidspaces Kernel source commit：[`9da4bdfa0e5d73fce8ae282a2898d054dcd2df80`](https://github.com/cottonthread/android_kernel_oneplus_sm8350/commit/9da4bdfa0e5d73fce8ae282a2898d054dcd2df80)
 - 原始命令记录、设备唯一标识、本地路径与完整构建产物仅保留在私有归档，不随本仓库发布。
 
 设备标识不要混用：
@@ -899,6 +899,72 @@ done
 sha256sum "$OTA" "$TARGET" "$IMAGE_ZIP" > SHA256SUMS
 sha256sum -c SHA256SUMS
 ```
+
+### 9.6 生成公开 Kernel-only Release 包
+
+只有 `scripts/60-build.sh`、`scripts/70-package.sh` 和 `scripts/80-audit.sh`
+全部成功，且审计目录以原子方式生成后，才能运行：
+
+```bash
+ROOT=$SRC_ROOT \
+OUT_REL=out-droidspaces-full \
+AUDIT_DIR="$SRC_ROOT/droidspaces-audit" \
+BUILD_EXIT_FILE="$SRC_ROOT/droidspaces-full-build.exit" \
+POSTBUILD_EXIT_FILE="$SRC_ROOT/droidspaces-postbuild.exit" \
+EXPECTED_KERNEL_COMMIT=9da4bdfa0e5d73fce8ae282a2898d054dcd2df80 \
+KERNEL_SOURCE_URL=https://github.com/cottonthread/android_kernel_oneplus_sm8350/commit/9da4bdfa0e5d73fce8ae282a2898d054dcd2df80 \
+bash scripts/90-package-kernel-release.sh
+```
+
+`80-audit.sh` 会安全解析 `70-package.sh` 生成的三键数据清单，不执行其中内容；
+只有在 build/postbuild 两个独立 exit 文件均真实为0且所有检查成功后，才以
+`RENAME_NOREPLACE` 原子发布审计目录。schema v2 attestation 绑定 Kernel commit、
+OTA、target-files、images ZIP、两种 `boot.img`、Kernel `Image`、最终 config、
+resolved manifest、固定 AVB 公钥及证据文件、两个 exit 文件和20项审计账本。
+发布模式拒绝通过环境变量覆盖 AVB key 或其固定摘要。
+
+最终可分发 `boot.img` 取自已审计的 images ZIP，并必须与 target-files 内的
+`IMAGES/boot.img` 字节完全一致。产品目录的 `boot.img` 是中间产物，releasetools
+会重组其 ramdisk，因此不要求两份 boot 整体相同；但两者内嵌 Kernel 都必须与
+公开包中的 `Image` 字节完全一致。
+
+`90-package-kernel-release.sh` 会拒绝：
+
+- 缺失、非零、重复、未知或顺序错误的20项审计账本；
+- 与当前归档、boot、Image、config、manifest、两个 exit 文件、公开审计证据、AVB key 或 ledger 不一致的 schema v2 attestation；
+- 带 `-dirty` 的 Kernel release；
+- 不是 `android@repro-build` 的 Kernel 编译身份；
+- 未通过完整 preflight 配置门禁的最终 `.config`；
+- 不干净或不匹配指定精确 commit 的 Kernel 工作树；
+- images ZIP 与 target-files 中不一致的分发 boot；
+- 内嵌 Kernel 与 `Image` 不一致，或无法以固定 AOSP test key 验证的 boot；
+- ramdisk 中不安全路径、Magisk、ADB key、授权 key、常见私钥或凭据标记；
+- 无法完整解析的串接 cpio archive，以及 trailer 后无法解释的非零数据；
+- 已存在的普通文件、目录或 dangling symlink 形式的同名发布资产。
+
+公开 ZIP 只包含：
+
+- 与本次 ROM build 精确匹配、未经 Magisk 修补的分发 `boot.img`；
+- 原始 arm64 `Image`；
+- 最终 `kernel.config` 与 `resolved-manifest.xml`；
+- 精确源码、构建身份、boot/Image 绑定、ramdisk 清单与 AVB 证据；
+- 完整固件审计账本、attestation、安装边界和包内 `SHA256SUMS`。
+
+ZIP 会先在 release 目录同一文件系统中生成并完整解压复核。脚本把 ZIP 与
+`.sha256` 放入同一个私有暂存目录并再次验签，然后以
+`renameat2(RENAME_NOREPLACE)` 将完整目录一次性原子发布。中断不会留下单边资产，
+并且任何既有同名发布目录都不会被覆盖。
+
+> [!WARNING] 安装与Root边界
+> 此包不是 AnyKernel 包，也没有在任意 ROM 上做通用兼容验证。刷入未修补的
+> `boot.img` 会替换当前 boot，包括现有 Magisk 修补。需要 root 的用户应自行
+> 使用可信的 Magisk 安装对**该精确 `boot.img`**重新修补并验证。项目不分发
+> Magisk 预修补镜像。AOSP test-key 构建不得作为安全重锁 bootloader 的依据。
+
+> [!IMPORTANT] 不公开完整固件归档
+> `70-package.sh` 和 `80-audit.sh` 所需的 OTA、target-files 与 images ZIP 只用于
+> 离线完整性、VINTF、FCM、签名和 AVB chain 审计；它们包含 proprietary vendor
+> 内容，不作为公开 Release 资产上传。
 
 ### 10. 长期日用的私有release keys阶段
 

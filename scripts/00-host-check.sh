@@ -55,7 +55,15 @@ fi
 
 # 7) Toolchain sanity (optional ccache)
 if command -v ccache >/dev/null 2>&1; then
+  ccache_dir="${CCACHE_DIR:-$HOME/.cache/ccache}"
+  if [ -e "$ccache_dir" ] && [ ! -d "$ccache_dir" ]; then
+    die "CCACHE_DIR exists but is not a directory: $ccache_dir"
+  fi
+  if [ -d "$ccache_dir" ] && [ ! -w "$ccache_dir" ]; then
+    die "CCACHE_DIR is not writable: $ccache_dir"
+  fi
   log "ccache: $(ccache --version | head -n1)"
+  log "ccache directory: $ccache_dir"
 else
   log "WARN: ccache not found — build will work but be slower"
 fi
